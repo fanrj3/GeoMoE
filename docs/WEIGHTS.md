@@ -4,8 +4,9 @@
 The parent `.gitignore` excludes it, so GitHub contains no model binaries. Clone
 the Hugging Face repository directly at that path:
 
-The Hugging Face clone URL will be added after the first public model upload.
-Clone that repository to `weights/` in the code checkout.
+```bash
+git clone https://huggingface.co/Frank0666/GeoMoE weights
+```
 
 Expected layout:
 

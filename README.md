@@ -74,11 +74,12 @@ The DINOv2 backbone is resolved by `timm` on first use. Set `HF_HOME` and
 
 Model binaries live in a separate Hugging Face Git/LFS repository and are
 intentionally absent from GitHub. Clone that repository as the ignored nested
-`weights/` checkout once the public model repository is available:
+`weights/` checkout:
 
-The Hugging Face clone URL will be added here immediately after the first model
-upload. Then run `python scripts/tools/verify_weights.py --weights weights` to
-verify every artifact against the release manifest.
+```bash
+git clone https://huggingface.co/Frank0666/GeoMoE weights
+python scripts/tools/verify_weights.py --weights weights
+```
 
 The release contains one backbone and one train-only PRC for each dataset. See
 [docs/WEIGHTS.md](docs/WEIGHTS.md) for layout, checksums, and LFS instructions.
