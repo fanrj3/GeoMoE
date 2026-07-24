@@ -32,7 +32,7 @@ PROJECT_ROOT = next(
 )
 BASE_EVALUATOR = Path(__file__).with_name("_vigor_m_protocol.py")
 DATA_ROOT = PROJECT_ROOT / "data/VIGOR-M"
-METADATA_ROOT = PROJECT_ROOT / "data/VIGOR-M/meta/level_pano"
+METADATA_ROOT = PROJECT_ROOT / "data/VIGOR-M/metadata"
 BUNDLE_SCHEMA = "vigorm-b11-e5-adaptive-search-features-v1"
 TABLE_SCHEMA = "vigorm-b11-e5-adaptive-search-action-table-v1"
 CHECKPOINT_SHA256 = "13d75e2a456e346138e3aac62b707739f800b77fc3f7648492862d72191a3463"

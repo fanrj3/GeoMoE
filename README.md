@@ -31,12 +31,18 @@ reranks the final beam without test-time label adaptation.
 All numbers below use the released B11/E5 Top-2 checkpoint and fixed K=4 beam.
 PRC is fitted on the official training split only.
 
-| Dataset | Queries | R@1 | R@40m | R@50m | R@100m | Median | Avg. final candidates |
-|:--|--:|--:|--:|--:|--:|--:|--:|
-| VIGOR-M | 37,789 | **62.3912** | - | - | **77.8163** | 52.3255 m | 47.00 |
-| JustZoomIn | 30,956 | **81.7063** | **95.7811** | **96.3238** | **97.6838** | 16.4321 m | 25.12 |
+### VIGOR-M
 
-VIGOR-M additionally reaches 84.3023% within 200 m and 86.8639% within 300 m.
+| Queries | R@1 | R@100m | R@200m | R@300m | Median | Avg. final candidates |
+|--:|--:|--:|--:|--:|--:|--:|
+| 37,789 | **62.3912%** | **77.8163%** | **84.3023%** | **86.8639%** | 52.3255 m | 47.00 |
+
+### JustZoomIn
+
+| Queries | R@1 | R@40m | R@50m | R@100m | Median | Avg. final candidates |
+|--:|--:|--:|--:|--:|--:|--:|
+| 30,956 | **81.7063%** | **95.7811%** | **96.3238%** | **97.6838%** | 16.4321 m | 25.12 |
+
 The exhaustive JustZoomIn L4 diagnostic reaches 82.0939% R@1, but scores all
 12,029 fine references. It is not the Beam + PRC result above.
 
@@ -91,21 +97,30 @@ Place or symlink datasets under `data/`:
 ```text
 data/
 ├── VIGOR-M/
-│   ├── Pano/<city>/*.jpg
-│   ├── level/<city>/L*/*.png
-│   └── meta/level_pano/*.csv
+│   ├── panoramas/<city>/*.jpg
+│   ├── satellite/<city>/L0..L3/*.png
+│   └── metadata/{city_bounds.csv,*.csv}
 └── justzoomin/
-    ├── metadata/*.csv
+    ├── metadata/{large_area_train_map.csv,large_area_val_map.csv}
     ├── streetview/images/*.jpg
     └── satellite/{layout.yaml,0,-1,...,-9}
 ```
 
-Prepare the derived metadata and dense satellite crops:
+The canonical VIGOR-M bundle is directly usable after download. Dataset
+maintainers can build it from the raw assets and the frozen experiment CSVs:
 
 ```bash
-python scripts/data/prepare_vigor_m_metadata.py \
-  --root data/VIGOR-M --output data/VIGOR-M/meta/level_pano
+python scripts/data/prepare_vigor_m_release.py \
+  --source-root /datasets/VIGOR-M-raw \
+  --metadata-source /datasets/VIGOR-M-frozen-metadata \
+  --output data/VIGOR-M --mode symlink
+```
 
+The official JustZoomIn download already contains every required metadata file;
+extract it unchanged into `data/justzoomin`. Dense L1/L2 crops are an optional
+derived cache for faster repeated runs:
+
+```bash
 python scripts/data/prepare_justzoomin_cache.py \
   --data-folder data/justzoomin --levels L1 L2 \
   --splits train val --satellite-stride-fraction 0.25
@@ -123,7 +138,6 @@ per GPU, and learning rate `1e-4`.
 # VIGOR-M
 python scripts/train/train_vigor_m.py \
   --data-folder data/VIGOR-M \
-  --metadata-folder data/VIGOR-M/meta/level_pano \
   --gpu-ids 0 --run-name vigor_m_b11_e5
 
 # JustZoomIn
@@ -160,7 +174,7 @@ GeoMoE/
 ├── scripts/
 │   ├── train/                 # full single-/multi-GPU trainers
 │   ├── eval/                  # feature extraction, beam search, PRC evaluation
-│   ├── data/                  # deterministic metadata/cache preparation
+│   ├── data/                  # portable dataset staging and optional caches
 │   └── tools/                 # release integrity checks
 ├── configs/                   # exact B11/E5 method specifications
 ├── docs/                      # data, training, evaluation, and weight guides
@@ -184,20 +198,6 @@ GeoMoE/
 GeoMoE builds on DINOv2, `timm`, and the Sample4Geo dual-encoder training recipe.
 We thank the VIGOR-M and JustZoomIn authors and the maintainers of their source
 imagery. See [NOTICE.md](NOTICE.md) for redistribution and data attribution notes.
-
-## Citation
-
-The paper citation will be added after publication. Until then, please cite this
-repository and the datasets used in your experiments.
-
-```bibtex
-@misc{geomoe2026,
-  title  = {GeoMoE: Multi-Scale Mixture-of-Experts for Hierarchical Cross-View Geo-Localization},
-  author = {GeoMoE Authors},
-  year   = {2026},
-  note   = {Code release}
-}
-```
 
 ## License
 

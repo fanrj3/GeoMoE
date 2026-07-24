@@ -27,6 +27,7 @@ from tqdm import tqdm
 from geomoe.datasets.vigor_m import (
     VIGOR_M_CITIES,
     VigorMDatasetEval,
+    _vigor_m_bounds_path,
     _vigor_m_city_csv_split,
     _vigor_m_split_csv,
 )
@@ -116,7 +117,7 @@ def parse_args():
         description="Evaluate VIGOR-M L1/L2/L3 hierarchical ablations."
     )
     parser.add_argument("--data-folder", default="./data/VIGOR-M")
-    parser.add_argument("--metadata-folder", default="./data/VIGOR-M/meta/level_pano")
+    parser.add_argument("--metadata-folder", default="./data/VIGOR-M/metadata")
     parser.add_argument("--model-root", default="./outputs/checkpoints/vigor_m")
     parser.add_argument("--model", default="convnext_base.fb_in22k_ft_in1k_384")
     parser.add_argument("--img-size", type=int, default=384)
@@ -430,12 +431,7 @@ def load_query_rows(data_folder, metadata_folder, split="test", same_area=True):
 
 
 def load_city_bounds(data_folder):
-    summary_path = (
-        Path(data_folder) / "figures" / "pano_distribution" /
-        "pano_distribution_summary.csv"
-    )
-    if not summary_path.exists():
-        raise FileNotFoundError(summary_path)
+    summary_path = _vigor_m_bounds_path(data_folder)
     df = pd.read_csv(summary_path)
     bounds = {}
     for _, row in df.iterrows():

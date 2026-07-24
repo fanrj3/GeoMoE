@@ -18,6 +18,37 @@ VIGOR_M_CITY_TO_ID = {city: idx for idx, city in enumerate(VIGOR_M_CITIES)}
 _CITY_MOSAIC_CACHE = {}
 
 
+def _vigor_m_panorama_root(data_folder):
+    root = Path(data_folder)
+    for candidate in (root / "panoramas", root / "Pano", root / "ground"):
+        if candidate.is_dir():
+            return candidate
+    return root / "panoramas"
+
+
+def _vigor_m_satellite_root(data_folder):
+    root = Path(data_folder)
+    for candidate in (root / "satellite", root / "level"):
+        if candidate.is_dir():
+            return candidate
+    return root / "satellite"
+
+
+def _vigor_m_bounds_path(data_folder):
+    root = Path(data_folder)
+    candidates = (
+        root / "metadata" / "city_bounds.csv",
+        root / "figures" / "pano_distribution" / "pano_distribution_summary.csv",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise FileNotFoundError(
+        "Missing VIGOR-M city bounds. Expected one of: "
+        + ", ".join(str(path) for path in candidates)
+    )
+
+
 def _vigor_m_split_csv(data_folder, city, split, metadata_folder=None):
     candidates = []
     if metadata_folder is not None:
@@ -29,6 +60,10 @@ def _vigor_m_split_csv(data_folder, city, split, metadata_folder=None):
 
     candidates = [
         *candidates,
+        Path(data_folder) / "metadata" / f"{city}_{split}.csv",
+        Path(data_folder) / "metadata" / city / f"{city}_{split}.csv",
+        Path(data_folder) / "meta" / "level_pano" / f"{city}_{split}.csv",
+        Path(data_folder) / "meta" / "level_pano" / city / f"{city}_{split}.csv",
         Path(data_folder) / "meta" / "level" / f"{city}_{split}.csv",
         Path(data_folder) / "meta" / "level" / city / f"{city}_{split}.csv",
         Path(data_folder) / f"{city}_{split}.csv",
@@ -48,17 +83,19 @@ def _vigor_m_city_csv_split(same_area, split):
 
 
 def _ground_path_from_row(row, data_folder, city):
+    panorama_root = _vigor_m_panorama_root(data_folder)
     if "ground_path" in row:
         path = row["ground_path"]
         if pd.notna(path) and str(path).strip():
             path = Path(str(path))
             if path.is_absolute():
-                if path.parent.name == city and path.parent.parent.name == "Pano":
-                    return str(Path(data_folder) / "Pano" / city / path.name)
+                known_roots = {"Pano", "panoramas", "ground"}
+                if path.parent.name == city and path.parent.parent.name in known_roots:
+                    return str(panorama_root / city / path.name)
                 return str(path)
             return str(Path(data_folder) / path)
 
-    return f'{data_folder}/ground/{city}/{row["ground"]}'
+    return str(panorama_root / city / row["ground"])
 
 
 def _read_rgb(path):
@@ -84,16 +121,7 @@ def _normal_tile_center(tile_id):
 
 
 def _load_city_bounds(data_folder):
-    summary_path = (
-        Path(data_folder) / "figures" / "pano_distribution" /
-        "pano_distribution_summary.csv"
-    )
-    if not summary_path.exists():
-        raise FileNotFoundError(
-            f"Missing VIGOR-M city bounds: {summary_path}. "
-            "Dense L1 stride needs L0 geographic bounds."
-        )
-
+    summary_path = _vigor_m_bounds_path(data_folder)
     df = pd.read_csv(summary_path)
     bounds = {}
     for _, row in df.iterrows():
@@ -112,7 +140,7 @@ def _build_city_l1_mosaic(data_folder, city):
     if cache_key in _CITY_MOSAIC_CACHE:
         return _CITY_MOSAIC_CACHE[cache_key]
 
-    tile_dir = Path(data_folder) / "level" / city / "L1"
+    tile_dir = _vigor_m_satellite_root(data_folder) / city / "L1"
     first = _read_rgb(tile_dir / f"{city}_L1_r00_c00.png")
     tile_h, tile_w = first.shape[:2]
     axis = 4
@@ -257,9 +285,10 @@ class VigorMDatasetTrain(Dataset):
         # Build tile index → path (dense L1 tiles are dynamic crops)
         self.idx2tile_path = {}
         if not self._use_dense_l1():
+            satellite_root = _vigor_m_satellite_root(data_folder)
             for idx, tile_id in self.idx2tile.items():
                 city, level, _, _ = _tile_parts(tile_id)
-                self.idx2tile_path[idx] = f'{data_folder}/level/{city}/{level}/{tile_id}.png'
+                self.idx2tile_path[idx] = str(satellite_root / city / level / f"{tile_id}.png")
         self.idx2label_cell = {
             idx: self._label_cell_for_tile(idx)
             for idx in self.idx2tile
@@ -889,11 +918,12 @@ class VigorMDatasetEval(Dataset):
 
         self.idx2tile_path = {}
         if not self._use_dense_l1():
+            satellite_root = _vigor_m_satellite_root(data_folder)
             for idx, tile_id in self.idx2tile.items():
                 parts = tile_id.split("_", 2)
                 city = parts[0]
                 level = parts[1]
-                self.idx2tile_path[idx] = f'{data_folder}/level/{city}/{level}/{tile_id}.png'
+                self.idx2tile_path[idx] = str(satellite_root / city / level / f"{tile_id}.png")
 
         # Ground images
         self.idx2ground_path = {}

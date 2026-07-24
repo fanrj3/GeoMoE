@@ -10,7 +10,6 @@ InfoNCE is evaluated separately per scale, preventing cross-scale negatives.
 ```bash
 python scripts/train/train_vigor_m.py \
   --data-folder data/VIGOR-M \
-  --metadata-folder data/VIGOR-M/meta/level_pano \
   --gpu-ids 0 \
   --master-port 12362 \
   --run-name vigor_m_b11_e5

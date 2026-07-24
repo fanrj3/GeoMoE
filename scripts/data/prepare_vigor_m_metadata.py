@@ -1,22 +1,19 @@
 #!/usr/bin/env python3
-"""Build VIGOR-M metadata for the updated Pano street-view images."""
+"""Build portable VIGOR-M metadata for a custom panorama collection.
+
+The published GeoMoE results use the frozen CSV files distributed with the
+VIGOR-M release. Do not regenerate those splits with this utility.
+"""
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
-
-_PROJECT_ROOT = next(p for p in Path(__file__).resolve().parents if (p / "geomoe").is_dir())
-if str(_PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT))
-
 
 import argparse
 import csv
 import hashlib
 import re
 from dataclasses import dataclass
-from pathlib import Path
 
 
 CITIES = ("Chicago", "NewYork", "SanFrancisco", "Seattle")
@@ -59,14 +56,47 @@ class Grid:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT)
-    parser.add_argument("--output", type=Path, default=Path("data/VIGOR-M/meta/level_pano"))
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Output directory (default: <root>/metadata-generated).",
+    )
     parser.add_argument("--same-area-test-ratio", type=float, default=0.5)
     parser.add_argument("--cross-train-cities", nargs="+", default=["NewYork", "Seattle"])
     return parser.parse_args()
 
 
+def resolve_panorama_root(root: Path) -> Path:
+    for candidate in (root / "panoramas", root / "Pano"):
+        if candidate.is_dir():
+            return candidate
+    raise FileNotFoundError(f"Missing panoramas directory under {root}")
+
+
+def resolve_satellite_root(root: Path) -> Path:
+    for candidate in (root / "satellite", root / "level"):
+        if candidate.is_dir():
+            return candidate
+    raise FileNotFoundError(f"Missing satellite directory under {root}")
+
+
+def resolve_bounds_path(root: Path) -> Path:
+    candidates = (
+        root / "metadata" / "city_bounds.csv",
+        root / "figures" / "pano_distribution" / "pano_distribution_summary.csv",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise FileNotFoundError(
+        "Missing city bounds. Expected one of: "
+        + ", ".join(str(path) for path in candidates)
+    )
+
+
 def load_grids(root: Path) -> dict[str, Grid]:
-    summary_path = root / "figures" / "pano_distribution" / "pano_distribution_summary.csv"
+    summary_path = resolve_bounds_path(root)
     grids: dict[str, Grid] = {}
     with summary_path.open(newline="") as f:
         for row in csv.DictReader(f):
@@ -101,10 +131,14 @@ def parse_pano(path: Path) -> tuple[float, float, str] | None:
     return lat, lon, panoid
 
 
-def build_rows(root: Path, grids: dict[str, Grid]) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+def build_rows(
+    root: Path,
+    grids: dict[str, Grid],
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     rows: list[dict[str, str]] = []
     unmatched: list[dict[str, str]] = []
-    pano_root = root / "Pano"
+    pano_root = resolve_panorama_root(root)
+    satellite_root = resolve_satellite_root(root)
 
     for city in CITIES:
         grid = grids[city]
@@ -112,35 +146,52 @@ def build_rows(root: Path, grids: dict[str, Grid]) -> tuple[list[dict[str, str]]
         if not city_dir.exists():
             raise FileNotFoundError(city_dir)
 
-        for path in sorted(city_dir.glob("*.jpg")):
+        image_paths = sorted(
+            path for path in city_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg"}
+        )
+        for path in image_paths:
+            relative_path = path.relative_to(root)
             parsed = parse_pano(path)
             if parsed is None:
-                unmatched.append({"city": city, "ground_path": str(path), "reason": "bad_pano_name"})
+                unmatched.append({
+                    "city": city,
+                    "ground_path": relative_path.as_posix(),
+                    "reason": "bad_pano_name",
+                })
                 continue
             lat, lon, panoid = parsed
             if not grid.contains(lat, lon):
-                unmatched.append({"city": city, "ground_path": str(path), "reason": "outside_l0_bounds"})
+                unmatched.append({
+                    "city": city,
+                    "ground_path": relative_path.as_posix(),
+                    "reason": "outside_l0_bounds",
+                })
                 continue
 
             ground = f"{panoid},{lat:.8f},{lon:.8f},.jpg"
             row = {
                 "city": city,
                 "ground": ground,
-                "ground_path": str(path),
+                "ground_path": relative_path.as_posix(),
                 "lat": f"{lat:.8f}",
                 "lon": f"{lon:.8f}",
             }
             complete = True
             for level in range(4):
                 tile_id = grid.tile_id(level, lat, lon)
-                tile_path = root / "level" / city / f"L{level}" / f"{tile_id}.png"
+                tile_path = satellite_root / city / f"L{level}" / f"{tile_id}.png"
                 row[f"L{level}"] = tile_id
                 complete = complete and tile_path.exists()
 
             if complete:
                 rows.append(row)
             else:
-                unmatched.append({"city": city, "ground_path": str(path), "reason": "missing_tile_file"})
+                unmatched.append({
+                    "city": city,
+                    "ground_path": relative_path.as_posix(),
+                    "reason": "missing_tile_file",
+                })
 
     rows.sort(key=lambda r: (r["city"], r["ground_path"]))
     return rows, unmatched
@@ -158,8 +209,12 @@ def split_rows(
         "cross_area_test": [],
     }
     for row in rows:
-        key = f"{row['city']}/{row['ground_path']}"
-        same_split = "same_area_test" if hash_score(key) < same_area_test_ratio else "same_area_train"
+        key = f"{row['city']}/{Path(row['ground_path']).name}"
+        same_split = (
+            "same_area_test"
+            if hash_score(key) < same_area_test_ratio
+            else "same_area_train"
+        )
         splits[same_split].append(row)
 
         cross_split = "cross_area_train" if row["city"] in cross_train_cities else "cross_area_test"
@@ -193,7 +248,7 @@ def write_unmatched(path: Path, rows: list[dict[str, str]]) -> None:
 def main() -> int:
     args = parse_args()
     root = args.root.resolve()
-    output = args.output.resolve()
+    output = (args.output or (root / "metadata-generated")).resolve()
     if not 0 < args.same_area_test_ratio < 1:
         raise ValueError("--same-area-test-ratio must be between 0 and 1")
 
@@ -210,8 +265,10 @@ def main() -> int:
     for city in CITIES:
         city_rows = [row for row in rows if row["city"] == city]
         write_rows(output / city / f"{city}_all.csv", city_rows)
-        write_rows(output / city / f"{city}_train.csv", [row for row in city_rows if id(row) in same_train_ids])
-        write_rows(output / city / f"{city}_test.csv", [row for row in city_rows if id(row) in same_test_ids])
+        city_train = [row for row in city_rows if id(row) in same_train_ids]
+        city_test = [row for row in city_rows if id(row) in same_test_ids]
+        write_rows(output / city / f"{city}_train.csv", city_train)
+        write_rows(output / city / f"{city}_test.csv", city_test)
 
     for name, split_rows_ in splits.items():
         write_rows(output / f"{name}.csv", split_rows_)

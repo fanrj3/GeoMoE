@@ -13,6 +13,7 @@ def test_required_entrypoints_exist():
         "scripts/eval/prepare_vigor_m_features.py",
         "scripts/eval/evaluate_vigor_m.py",
         "scripts/eval/evaluate_justzoomin.py",
+        "scripts/data/prepare_vigor_m_release.py",
         "scripts/data/prepare_vigor_m_metadata.py",
         "scripts/data/prepare_justzoomin_cache.py",
     )

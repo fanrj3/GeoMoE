@@ -62,7 +62,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--metadata-folder",
         type=Path,
-        default=Path("data/VIGOR-M/meta/level_pano"),
+        default=Path("data/VIGOR-M/metadata"),
     )
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--batch-size", type=int, default=128)

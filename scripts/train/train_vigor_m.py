@@ -126,7 +126,7 @@ class Configuration:
     lr_end: float = 0.00001
 
     data_folder: str = "./data/VIGOR-M"
-    metadata_folder: str = "./data/VIGOR-M/meta/level_pano"
+    metadata_folder: str = "./data/VIGOR-M/metadata"
     same_area: bool = True
     data_levels: tuple = LEVELS
     eval_levels: tuple = LEVELS
