@@ -1,0 +1,23 @@
+dataset: justzoomin
+levels: [L1, L2, L3, L4]
+dense_levels: [L1, L2]
+satellite_zoom: -3
+satellite_stride_fraction: 0.25
+model: vit_base_patch14_dinov2.lvd142m
+image_size: 384
+ground_size: [432, 768]
+moe_start_block: 11
+num_experts: 5
+top_k: 2
+router_jitter: 0.01
+moe_aux_weight: 0.01
+init_mode: pretrained
+epochs: 60
+batch_size_per_gpu: 128
+learning_rate: 0.0001
+level_loss_weights: [1.0, 1.0, 1.0, 2.0]
+beam_width: 4
+temperature: 0.07
+prc_hidden_dim: 48
+prc_epochs: 20
+prc_learning_rate: 0.002
