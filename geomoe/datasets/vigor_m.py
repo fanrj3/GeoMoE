@@ -1,3 +1,11 @@
+"""VIGOR-M dataset adapters, dense-L1 crops, and safe batch construction.
+
+Native L1/L2/L3 tile identifiers encode city, row, and column. Dense L1 uses
+overlapping crops from each city's L1 mosaic and maps panorama coordinates to
+the nearest crop center. Training samplers exclude duplicate/overlapping
+positives so diagonal InfoNCE targets remain valid.
+"""
+
 import cv2
 import numpy as np
 from torch.utils.data import Dataset
@@ -19,6 +27,7 @@ _CITY_MOSAIC_CACHE = {}
 
 
 def _vigor_m_panorama_root(data_folder):
+    """Resolve the canonical or legacy panorama directory."""
     root = Path(data_folder)
     for candidate in (root / "panoramas", root / "Pano", root / "ground"):
         if candidate.is_dir():
@@ -27,6 +36,7 @@ def _vigor_m_panorama_root(data_folder):
 
 
 def _vigor_m_satellite_root(data_folder):
+    """Resolve the canonical or legacy hierarchy directory."""
     root = Path(data_folder)
     for candidate in (root / "satellite", root / "level"):
         if candidate.is_dir():
@@ -35,6 +45,7 @@ def _vigor_m_satellite_root(data_folder):
 
 
 def _vigor_m_bounds_path(data_folder):
+    """Resolve the city-bounds metadata file used for coordinate mapping."""
     root = Path(data_folder)
     candidates = (
         root / "metadata" / "city_bounds.csv",
@@ -50,6 +61,7 @@ def _vigor_m_bounds_path(data_folder):
 
 
 def _vigor_m_split_csv(data_folder, city, split, metadata_folder=None):
+    """Resolve one city/split CSV from release or legacy metadata layouts."""
     candidates = []
     if metadata_folder is not None:
         meta_root = Path(metadata_folder)
@@ -75,6 +87,7 @@ def _vigor_m_split_csv(data_folder, city, split, metadata_folder=None):
 
 
 def _vigor_m_city_csv_split(same_area, split):
+    """Map public split options to the city-specific metadata suffix."""
     # Cross-area follows original VIGOR: split by cities, using all panos
     # in each selected city rather than an intra-city train/test subset.
     if same_area:
@@ -83,6 +96,7 @@ def _vigor_m_city_csv_split(same_area, split):
 
 
 def _ground_path_from_row(row, data_folder, city):
+    """Resolve a portable metadata ground path against the dataset root."""
     panorama_root = _vigor_m_panorama_root(data_folder)
     if "ground_path" in row:
         path = row["ground_path"]
@@ -99,6 +113,7 @@ def _ground_path_from_row(row, data_folder, city):
 
 
 def _read_rgb(path):
+    """Load an image and normalize OpenCV's channel order to RGB."""
     img = cv2.imread(str(path))
     if img is None:
         raise FileNotFoundError(path)
@@ -106,21 +121,25 @@ def _read_rgb(path):
 
 
 def _tile_parts(tile_id):
+    """Parse a tile identifier into city, level, row, and column."""
     parts = tile_id.split("_")
     return parts[0], parts[1], int(parts[2][1:]), int(parts[3][1:])
 
 
 def _city_axis_offset(city):
+    """Separate city grids in the synthetic coordinate space."""
     return VIGOR_M_CITY_TO_ID.get(city, 0) * 100000.0
 
 
 def _normal_tile_center(tile_id):
+    """Return a regular tile center in a city-separated coordinate space."""
     city, level, row, col = _tile_parts(tile_id)
     axis = 4 ** int(level[1:])
     return (_city_axis_offset(city) + col + 0.5, row + 0.5, axis)
 
 
 def _load_city_bounds(data_folder):
+    """Load release city bounds keyed by city name."""
     summary_path = _vigor_m_bounds_path(data_folder)
     df = pd.read_csv(summary_path)
     bounds = {}
@@ -136,6 +155,7 @@ def _load_city_bounds(data_folder):
 
 
 def _build_city_l1_mosaic(data_folder, city):
+    """Stitch the native 4x4 L1 tiles into a crop source for dense L1."""
     cache_key = (str(Path(data_folder).resolve()), city)
     if cache_key in _CITY_MOSAIC_CACHE:
         return _CITY_MOSAIC_CACHE[cache_key]
@@ -161,6 +181,7 @@ def _build_city_l1_mosaic(data_folder, city):
 
 
 def _crop_with_padding(image, center_x, center_y, crop_w, crop_h):
+    """Crop around a center, padding out-of-bounds pixels with black."""
     x0 = int(round(center_x - crop_w / 2.0))
     y0 = int(round(center_y - crop_h / 2.0))
     x1 = x0 + crop_w
@@ -353,6 +374,7 @@ class VigorMDatasetTrain(Dataset):
         return self.data_level == "L1" and self.satellite_stride_fraction is not None
 
     def _init_dense_l1_tiles(self):
+        """Create the overlapping dense-L1 gallery and projected tile centers."""
         stride_fraction = float(self.satellite_stride_fraction)
         if not (0.0 < stride_fraction <= 1.0):
             raise ValueError("satellite_stride_fraction must be in (0, 1].")
@@ -557,6 +579,7 @@ class VigorMDatasetTrain(Dataset):
         neighbour_select=8,
         neighbour_range=16,
     ):
+        """Build full batches while rejecting duplicate or overlapping positives."""
         label_to_pairs = {idx: copy.deepcopy(pairs) for idx, pairs in self.idx2pairs.items()}
         for pairs in label_to_pairs.values():
             random.shuffle(pairs)
@@ -983,6 +1006,7 @@ class VigorMDatasetEval(Dataset):
         return self.data_level == "L1" and self.satellite_stride_fraction is not None
 
     def _init_dense_l1_tiles(self):
+        """Create a deterministic dense-L1 gallery for query/reference evaluation."""
         stride_fraction = float(self.satellite_stride_fraction)
         if not (0.0 < stride_fraction <= 1.0):
             raise ValueError("satellite_stride_fraction must be in (0, 1].")

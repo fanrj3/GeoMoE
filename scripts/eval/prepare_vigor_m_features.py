@@ -42,18 +42,24 @@ BUNDLE_SCHEMA = "vigorm-b11-e5-adaptive-search-features-v1"
 
 
 class IndexedDataset(Dataset):
+    """Attach stable dataset indices so feature batches can be reordered."""
+
     def __init__(self, dataset: Dataset):
+        """Wrap a query or reference dataset."""
         self.dataset = dataset
 
     def __len__(self) -> int:
+        """Return the wrapped dataset size."""
         return len(self.dataset)
 
     def __getitem__(self, index: int):
+        """Return the image together with its original dataset index."""
         image, _ = self.dataset[index]
         return image, int(index)
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse feature-preparation options."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--split", choices=("train", "test"), required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -72,6 +78,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def file_sha256(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
+    """Hash a file in bounded-memory chunks."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         while chunk := handle.read(chunk_size):
@@ -80,6 +87,7 @@ def file_sha256(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
 
 
 def digest_strings(values) -> str:
+    """Create an order-sensitive digest for an identifier sequence."""
     digest = hashlib.sha256()
     for value in values:
         digest.update(str(value).encode("utf-8"))
@@ -88,6 +96,7 @@ def digest_strings(values) -> str:
 
 
 def digest_tensor(value: torch.Tensor) -> str:
+    """Hash tensor contents together with shape and dtype metadata."""
     array = value.detach().cpu().contiguous().numpy()
     digest = hashlib.sha256()
     digest.update(str(array.dtype).encode("ascii"))
@@ -97,6 +106,7 @@ def digest_tensor(value: torch.Tensor) -> str:
 
 
 def checkpoint_meta(checkpoint: Path) -> dict[str, Any]:
+    """Record checkpoint identity used to invalidate stale feature caches."""
     stat = checkpoint.stat()
     if stat.st_size != CHECKPOINT_SIZE:
         raise RuntimeError(f"Checkpoint size mismatch: {stat.st_size}")
@@ -112,6 +122,7 @@ def checkpoint_meta(checkpoint: Path) -> dict[str, Any]:
 
 
 def load_cache(path: Path, expected_items: int | None = None) -> tuple[torch.Tensor, dict]:
+    """Load and validate a feature cache produced by this script."""
     try:
         payload = torch.load(path, map_location="cpu", weights_only=False)
     except TypeError:
@@ -134,6 +145,7 @@ def load_cache(path: Path, expected_items: int | None = None) -> tuple[torch.Ten
 
 
 def atomic_torch_save(path: Path, payload: dict[str, Any]) -> None:
+    """Publish a Torch payload only after its temporary file is complete."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     try:
@@ -145,6 +157,7 @@ def atomic_torch_save(path: Path, payload: dict[str, Any]) -> None:
 
 
 def build_model(device: torch.device, checkpoint: Path):
+    """Construct the released GeoMoE encoder and restore its weights."""
     model = LevelMoEFFNTimmModel(
         MODEL_NAME,
         pretrained=False,
@@ -172,6 +185,7 @@ def build_model(device: torch.device, checkpoint: Path):
 
 
 def build_transforms(model):
+    """Build deterministic satellite and panorama evaluation transforms."""
     config = model.get_config()
     satellite, pano = get_transforms_val(
         (384, 384),
@@ -199,6 +213,7 @@ def make_dataset(
     *,
     dense_l1: bool,
 ):
+    """Instantiate one VIGOR-M query/reference dataset view."""
     return VigorMDatasetEval(
         data_folder=str(args.data_folder),
         split=split,
@@ -212,6 +227,7 @@ def make_dataset(
 
 
 def make_loader(dataset: Dataset, args: argparse.Namespace, device: torch.device):
+    """Create a deterministic, index-preserving feature loader."""
     kwargs: dict[str, Any] = {
         "batch_size": args.batch_size,
         "shuffle": False,
@@ -226,6 +242,7 @@ def make_loader(dataset: Dataset, args: argparse.Namespace, device: torch.device
 
 @torch.inference_mode()
 def extract_features(model, dataset: Dataset, args, device: torch.device, description: str, head: str):
+    """Encode a dataset and restore canonical order after batching."""
     features = []
     indices = []
     for images, batch_indices in tqdm(
@@ -246,6 +263,7 @@ def extract_features(model, dataset: Dataset, args, device: torch.device, descri
 
 
 def build_protocol_datasets(args, split: str, satellite_transform, pano_transform):
+    """Build the three hierarchy levels for a split with aligned queries."""
     query = {
         level: make_dataset(
             args,
@@ -271,6 +289,7 @@ def build_protocol_datasets(args, split: str, satellite_transform, pano_transfor
 
 
 def main() -> None:
+    """Prepare validated VIGOR-M feature bundles for downstream evaluation."""
     args = parse_args()
     args.output = args.output.expanduser().resolve()
     args.checkpoint = args.checkpoint.expanduser().resolve()

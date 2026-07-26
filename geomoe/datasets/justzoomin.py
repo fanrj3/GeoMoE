@@ -1,3 +1,10 @@
+"""JustZoomIn dataset adapters, dense satellite grids, and batch samplers.
+
+The hierarchy is represented by sequence prefixes L1-L4. Dense L1/L2 modes
+replace native sequence cells with overlapping crop centers while preserving
+the same integer-label interface expected by the level-wise trainer.
+"""
+
 import ast
 import copy
 import heapq
@@ -25,6 +32,7 @@ JUSTZOOMIN_LEVELS = {
 
 
 def resolve_justzoomin_level(data_level):
+    """Return sequence depth and physical crop size for one named level."""
     level = str(data_level).upper()
     if level not in JUSTZOOMIN_LEVELS:
         valid = ", ".join(JUSTZOOMIN_LEVELS)
@@ -33,6 +41,7 @@ def resolve_justzoomin_level(data_level):
 
 
 def resolve_justzoomin_levels(data_levels):
+    """Normalize an optional level collection to uppercase level names."""
     if data_levels is None:
         return list(JUSTZOOMIN_LEVELS.keys())
     return [str(level).upper() for level in data_levels]
@@ -75,14 +84,17 @@ def build_spatial_neighbor_dict(idx2tile_center, labels=None, top_k=128, block_s
 
 
 def default_satellite_cache_dir(data_folder):
+    """Return the repository-local default for generated crop caches."""
     return Path(__file__).resolve().parents[2] / "data" / "justzoomin_satellite_cache"
 
 
 def _format_cache_value(value):
+    """Format numeric cache-key components without unstable trailing zeros."""
     return str(value).replace("-", "m").replace(".", "p")
 
 
 def _parse_sequence(value):
+    """Normalize serialized or iterable quadtree sequences to integer tuples."""
     if isinstance(value, str):
         return tuple(ast.literal_eval(value))
     return tuple(value)
@@ -125,6 +137,7 @@ def _epsg26985_from_latlon(lat_deg, lon_deg):
 
 
 class _JustZoomInBase:
+    """Shared geometry, metadata, and image-loading implementation."""
     grid_size = 4
     geographic_center_latlon = (38.8936, -77.0116)
     region_bounds_meters = (-3000.0, 7000.0, -5000.0, 5000.0)
@@ -218,6 +231,7 @@ class _JustZoomInBase:
         return str(tile_id).replace("/", "_").replace(" ", "_")
 
     def _init_dense_satellite_grid(self, stride_fraction):
+        """Enumerate overlapping crop centers on a regular projected grid."""
         if not (0.0 < stride_fraction <= 1.0):
             raise ValueError("satellite_stride_fraction must be in (0, 1].")
 
@@ -319,6 +333,7 @@ class _JustZoomInBase:
         return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     def _read_satellite_crop(self, center_east, center_north, crop_meters):
+        """Read a crop, falling back to coarser zooms when source tiles are absent."""
         crop = None
         zoom = self.satellite_zoom
         while zoom >= -9:
@@ -680,6 +695,7 @@ class JustZoomInDatasetTrain(_JustZoomInBase, Dataset):
         return samples
 
     def shuffle(self, sim_dict=None, neighbour_select=8, neighbour_range=16):
+        """Rebuild one epoch as label-unique, hard-negative-aware batches."""
         label_to_pairs = {idx: copy.deepcopy(pairs) for idx, pairs in self.idx2pairs.items()}
         for pairs in label_to_pairs.values():
             random.shuffle(pairs)
@@ -816,6 +832,7 @@ class JustZoomInDatasetEval(_JustZoomInBase, Dataset):
 
 
 class _AllInLevelDataset(_JustZoomInBase):
+    """One-level view used internally by the unified all-level dataset."""
     def __init__(
         self,
         data_folder,
@@ -841,6 +858,7 @@ class _AllInLevelDataset(_JustZoomInBase):
 
 
 class _JustZoomInAllInMixin:
+    """Shared initialization and hierarchy logic for all-level datasets."""
     def _init_allin_common(
         self,
         data_folder,
@@ -1099,6 +1117,7 @@ class JustZoomInAllInDatasetTrain(_JustZoomInAllInMixin, Dataset):
         ]
 
     def shuffle(self, sim_dict=None, neighbour_select=8, neighbour_range=16):
+        """Construct level-balanced global batches without false negatives."""
         batch_size = max(1, int(self.shuffle_batch_size))
         quota = self._batch_quota(batch_size)
 

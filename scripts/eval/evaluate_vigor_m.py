@@ -71,6 +71,7 @@ HALF_AXES = {"L15": 8, "L25": 32, "L35": 128}
 
 
 def load_module(path: Path, name: str):
+    """Load the shared legacy protocol helper from a sibling file."""
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
         raise ImportError(path)
@@ -85,6 +86,8 @@ BASE = load_module(BASE_EVALUATOR, "vigorm_adaptive_search_base")
 
 @dataclass
 class Protocol:
+    """Validated VIGOR-M hierarchy, labels, coordinates, and child groups."""
+
     dense_tiles: list[str]
     l2_tiles: list[str]
     l3_tiles: list[str]
@@ -101,7 +104,10 @@ class Protocol:
 
 
 class PathCalibrator(nn.Module):
+    """Predict a residual correction from hierarchical path statistics."""
+
     def __init__(self, input_dim: int, hidden: int = 48):
+        """Build the small residual MLP used after Beam retrieval."""
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(input_dim),
@@ -115,11 +121,15 @@ class PathCalibrator(nn.Module):
         nn.init.zeros_(self.net[-1].bias)
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
+        """Return one correction logit for each final candidate."""
         return self.net(features).squeeze(-1)
 
 
 class WidthController(nn.Module):
+    """Choose a discrete pair of L1/L2 Beam widths per query."""
+
     def __init__(self, input_dim: int, actions: int, hidden: int = 128):
+        """Build the action-classification network."""
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(input_dim),
@@ -132,11 +142,15 @@ class WidthController(nn.Module):
         )
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
+        """Return logits over the configured width actions."""
         return self.net(features)
 
 
 class BeamExpansionGate(nn.Module):
+    """Predict whether a query needs expansion beyond a narrow Beam."""
+
     def __init__(self, input_dim: int, hidden: int = 32):
+        """Build the binary expansion gate."""
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(input_dim),
@@ -146,10 +160,12 @@ class BeamExpansionGate(nn.Module):
         )
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
+        """Return one expansion logit per query."""
         return self.net(features).squeeze(1)
 
 
 def seed_everything(seed: int = 17) -> None:
+    """Seed Python, NumPy, and Torch for repeatable policy fitting."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -157,6 +173,7 @@ def seed_everything(seed: int = 17) -> None:
 
 
 def atomic_torch(path: Path, payload: Any) -> None:
+    """Publish a Torch payload only after the temporary write succeeds."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     try:
@@ -168,6 +185,7 @@ def atomic_torch(path: Path, payload: Any) -> None:
 
 
 def atomic_json(path: Path, payload: Any) -> None:
+    """Write JSON through a temporary file to avoid partial reports."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     try:
@@ -179,6 +197,7 @@ def atomic_json(path: Path, payload: Any) -> None:
 
 
 def atomic_csv(path: Path, rows: list[dict[str, Any]]) -> None:
+    """Atomically write a non-empty tabular report."""
     if not rows:
         raise ValueError("Cannot write empty CSV")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -196,6 +215,7 @@ def atomic_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def load_torch(path: Path) -> Any:
+    """Load checkpoints across supported PyTorch versions on CPU."""
     try:
         return torch.load(path, map_location="cpu", weights_only=False)
     except TypeError:
@@ -203,6 +223,7 @@ def load_torch(path: Path) -> Any:
 
 
 def load_bundle(path: Path) -> dict[str, Any]:
+    """Load a feature bundle and verify its model/schema alignment."""
     bundle = load_torch(path)
     if not isinstance(bundle, dict) or bundle.get("schema") != BUNDLE_SCHEMA:
         raise RuntimeError(f"Invalid feature bundle: {path}")
@@ -239,6 +260,7 @@ def load_bundle(path: Path) -> dict[str, Any]:
 
 
 def parse_dense_tile(tile_id: str) -> tuple[str, int, int]:
+    """Parse and validate a dense stride-0.25 L1 tile identifier."""
     match = DENSE_TILE_RE.fullmatch(tile_id)
     if match is None:
         raise ValueError(tile_id)
@@ -251,10 +273,12 @@ def parse_dense_tile(tile_id: str) -> tuple[str, int, int]:
 
 
 def fixed_window_start(index: int) -> int:
+    """Clamp an overlapping four-cell child window to a 16-cell axis."""
     return min(max(index - 2, 0), 12)
 
 
 def parse_half_tile(tile_id: str, expected_code: str) -> tuple[str, int, int]:
+    """Parse and validate an optional half-level tile identifier."""
     match = HALF_TILE_RE.fullmatch(tile_id)
     if match is None or match.group("code") != expected_code:
         raise ValueError(tile_id)
@@ -268,6 +292,7 @@ def parse_half_tile(tile_id: str, expected_code: str) -> tuple[str, int, int]:
 
 
 def half_parent(tile_id: str, child_code: str, parent_code: str) -> str:
+    """Map a half-level tile to its four-times coarser parent."""
     city, row, col = parse_half_tile(tile_id, child_code)
     return f"{city}_{parent_code}_r{row // 4:02d}_c{col // 4:02d}"
 
@@ -275,6 +300,8 @@ def half_parent(tile_id: str, child_code: str, parent_code: str) -> str:
 def half_tile_from_latlon(
     city: str, lat: float, lon: float, code: str, bounds: dict[str, tuple]
 ) -> str:
+    """Map a geographic point to a half-level tile identifier."""
+
     min_lon, min_lat, max_lon, max_lat = bounds[city]
     axis = HALF_AXES[code]
     epsilon = 1e-7
@@ -286,6 +313,7 @@ def half_tile_from_latlon(
 
 
 def half_tile_center(tile_id: str, bounds: dict[str, tuple]) -> tuple[float, float]:
+    """Return the geographic center of a half-level tile."""
     match = HALF_TILE_RE.fullmatch(tile_id)
     if match is None:
         raise ValueError(tile_id)
@@ -299,6 +327,7 @@ def half_tile_center(tile_id: str, bounds: dict[str, tuple]) -> tuple[float, flo
 
 
 def pad_groups(groups: list[list[int]]) -> tuple[torch.Tensor, torch.Tensor]:
+    """Pad child lists to the fixed branching factor and return a mask."""
     if not groups or any(not group or len(group) > MAX_CHILDREN for group in groups):
         raise RuntimeError("Invalid child groups")
     indices = torch.zeros((len(groups), MAX_CHILDREN), dtype=torch.long)
@@ -312,6 +341,7 @@ def pad_groups(groups: list[list[int]]) -> tuple[torch.Tensor, torch.Tensor]:
 
 
 def build_protocol(bundle: dict[str, Any]) -> Protocol:
+    """Build and validate hierarchy mappings against feature-bundle labels."""
     dense_tiles = list(bundle["levels"]["L1"]["tile_list"])
     l2_tiles = list(bundle["levels"]["L2"]["tile_list"])
     l3_tiles = list(bundle["levels"]["L3"]["tile_list"])
@@ -417,12 +447,14 @@ def build_protocol(bundle: dict[str, Any]) -> Protocol:
 
 
 def gather_scores(query: torch.Tensor, refs: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
+    """Score per-query candidate indices against a reference feature bank."""
     selected = refs.index_select(0, indices.reshape(-1)).reshape(*indices.shape, -1)
     expanded = query.reshape(query.shape[0], *([1] * (indices.ndim - 1)), -1)
     return (expanded * selected).sum(dim=-1)
 
 
 def masked_log_softmax(logits: torch.Tensor, mask: torch.Tensor, dim: int) -> torch.Tensor:
+    """Compute log probabilities while excluding padded candidates."""
     has_candidate = mask.any(dim=dim, keepdim=True)
     masked_logits = logits.masked_fill(~mask, -float("inf"))
     # Sparse observed hierarchies can have padded beam slots with no children.
@@ -433,6 +465,7 @@ def masked_log_softmax(logits: torch.Tensor, mask: torch.Tensor, dim: int) -> to
 
 
 def normalized_entropy(probabilities: torch.Tensor, mask: torch.Tensor, dim: int) -> torch.Tensor:
+    """Measure candidate uncertainty on a zero-to-one scale."""
     p = probabilities.masked_fill(~mask, 0.0)
     entropy = -(p.clamp_min(1e-12).log() * p).sum(dim=dim)
     count = mask.sum(dim=dim).clamp_min(2).float()
@@ -440,6 +473,7 @@ def normalized_entropy(probabilities: torch.Tensor, mask: torch.Tensor, dim: int
 
 
 def top_state(logp: torch.Tensor, valid: torch.Tensor, k: int = 8) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return fixed-width top log probabilities and probabilities."""
     values = logp.masked_fill(~valid, -float("inf"))
     top = torch.topk(values, k=min(k, values.shape[1]), dim=1).values
     if top.shape[1] < k:
@@ -451,6 +485,7 @@ def top_state(logp: torch.Tensor, valid: torch.Tensor, k: int = 8) -> tuple[torc
 
 
 def root_features(query: torch.Tensor, sim_l1: torch.Tensor, temperature: float):
+    """Summarize the global L1 response for search policies and calibration."""
     logp = F.log_softmax(sim_l1 / temperature, dim=1)
     probs = logp.exp()
     top_logp, top_probs = top_state(logp, torch.ones_like(logp, dtype=torch.bool))
@@ -486,6 +521,8 @@ def search_action(
     feature_mean: torch.Tensor | None = None,
     feature_std: torch.Tensor | None = None,
 ) -> dict[str, torch.Tensor]:
+    """Evaluate one L1/L2 Beam-width action and optional PRC correction."""
+
     device = query.device
     dense_l2_indices = protocol.dense_l2_indices.to(device)
     dense_l2_mask = protocol.dense_l2_mask.to(device)
@@ -508,6 +545,8 @@ def search_action(
     flat_l2_local = l2_local.flatten(1)
     flat_l2_raw = l2_raw.flatten(1)
 
+    # Dense L1 windows overlap, so one L2 tile can arrive through several roots.
+    # Keep the strongest accumulated path and retain its provenance below.
     merged_l2 = query.new_full((query.shape[0], len(protocol.l2_tiles)), -float("inf"))
     merged_l2.scatter_reduce_(
         1, flat_l2_indices, flat_l2_path, reduce="amax", include_self=True
@@ -549,6 +588,8 @@ def search_action(
     child_count = l3_valid.sum(dim=2).float()
     shape = l3_path.shape
     expand = lambda value: value.unsqueeze(2).expand(shape).flatten(1)
+    # PRC uses retrieval evidence only; geographic coordinates and labels are
+    # deliberately absent to prevent location leakage during calibration.
     features = torch.stack(
         [
             base_scores,
@@ -615,6 +656,7 @@ def search_action(
 
 
 def calibrator_from_checkpoint(path: Path, device: torch.device):
+    """Restore a path calibrator and its feature normalization tensors."""
     payload = load_torch(path)
     if payload.get("schema") != "vigorm-b11-e5-path-calibrator-v1":
         raise RuntimeError(f"Invalid calibrator checkpoint: {path}")
@@ -632,6 +674,8 @@ def distances_for_predictions(
     query_start: int = 0,
     query_indices: torch.Tensor | None = None,
 ) -> torch.Tensor:
+    """Compute geodesic errors for predicted L3 reference indices."""
+
     count = int(predictions.shape[0])
     if query_indices is None:
         rows = protocol.query_rows[query_start : query_start + count]
@@ -652,6 +696,7 @@ def distances_for_predictions(
 
 
 def build_action_table(args: argparse.Namespace) -> None:
+    """Evaluate every Beam-width action and persist per-query outcomes."""
     bundle = load_bundle(args.bundle)
     protocol = build_protocol(bundle)
     device = torch.device(args.device)
@@ -840,6 +885,7 @@ def build_action_table(args: argparse.Namespace) -> None:
 
 
 def calibrator_identity(payload: dict[str, Any]) -> tuple[str, str] | None:
+    """Return the calibrator schema/hash pair recorded by an action table."""
     calibrator = payload.get("calibrator")
     if calibrator is None:
         return None
@@ -847,6 +893,7 @@ def calibrator_identity(payload: dict[str, Any]) -> tuple[str, str] | None:
 
 
 def merge_action_tables(args: argparse.Namespace) -> None:
+    """Merge disjoint action shards after validating shared metadata."""
     parts = [load_torch(path) for path in args.inputs]
     if not parts or any(part.get("schema") != TABLE_SCHEMA for part in parts):
         raise RuntimeError("All inputs must be adaptive-search action tables")
@@ -915,6 +962,7 @@ def merge_action_tables(args: argparse.Namespace) -> None:
 
 
 def subset_action_table(args: argparse.Namespace) -> None:
+    """Create an index-preserving query subset of an action table."""
     payload = load_torch(args.input)
     if payload.get("schema") != TABLE_SCHEMA:
         raise RuntimeError(f"Invalid action table: {args.input}")
@@ -981,6 +1029,7 @@ def subset_action_table(args: argparse.Namespace) -> None:
 
 
 def split_indices(total: int, seed: int = 17, val_fraction: float = 0.2):
+    """Create deterministic disjoint training and validation indices."""
     generator = torch.Generator().manual_seed(seed)
     order = torch.randperm(total, generator=generator)
     val_count = int(round(total * val_fraction))
@@ -988,6 +1037,7 @@ def split_indices(total: int, seed: int = 17, val_fraction: float = 0.2):
 
 
 def train_calibrator(args: argparse.Namespace) -> None:
+    """Fit and save the path-residual calibrator from training features."""
     data = load_torch(args.table)
     candidates = data["candidate_k3"]
     features = candidates["features"].float()
@@ -1009,6 +1059,7 @@ def train_calibrator(args: argparse.Namespace) -> None:
     history = []
 
     def evaluate(indices: torch.Tensor):
+        """Measure calibrated exact retrieval on a query subset."""
         model.eval()
         correct = covered = total = 0
         with torch.inference_mode():
@@ -1075,6 +1126,7 @@ def train_calibrator(args: argparse.Namespace) -> None:
 
 
 def oracle_labels(table: dict[str, torch.Tensor]) -> torch.Tensor:
+    """Choose the cheapest successful action target for each query."""
     exact = table["exact"].bool()
     within = table["within100"].bool()
     distance = table["distance_m"].float()
@@ -1096,6 +1148,7 @@ def oracle_labels(table: dict[str, torch.Tensor]) -> torch.Tensor:
 
 
 def metrics_for_selection(payload: dict[str, Any], selection: torch.Tensor, name: str):
+    """Summarize accuracy, distance, and compute for selected actions."""
     table = payload["table"]
     rows = torch.arange(len(selection))
     chosen = {key: value[rows, selection] for key, value in table.items()}
@@ -1130,6 +1183,7 @@ def metrics_for_selection(payload: dict[str, Any], selection: torch.Tensor, name
 
 
 def evaluate_current_method(args: argparse.Namespace) -> None:
+    """Report the locked fixed-Beam plus path-calibrator method."""
     payload = load_torch(args.calibrated_test_table)
     if payload.get("schema") != TABLE_SCHEMA or payload.get("split") != "test":
         raise RuntimeError("Expected a calibrated VIGOR-M test action table")
@@ -1160,6 +1214,7 @@ def evaluate_current_method(args: argparse.Namespace) -> None:
 
 
 def gate_features(payload: dict[str, Any], narrow_width: int) -> torch.Tensor:
+    """Build finite root/search features for the binary expansion gate."""
     # Query embeddings are intentionally excluded; the gate uses only search-state uncertainty.
     root_stats = payload["root_input"][:, -21:].float()
     l2_stats = torch.cat(
@@ -1184,6 +1239,8 @@ def tune_gate_threshold(
     narrow_width: int,
     wide_width: int,
 ):
+    """Select the gate threshold that maximizes retrieval before cost."""
+
     narrow_action = ACTIONS.index((narrow_width, narrow_width))
     wide_action = ACTIONS.index((wide_width, wide_width))
     subset = {
@@ -1210,6 +1267,7 @@ def tune_gate_threshold(
 
 
 def train_gate(args: argparse.Namespace) -> None:
+    """Train a binary gate that expands uncertain narrow-Beam queries."""
     payload = load_torch(args.table)
     if payload.get("schema") != TABLE_SCHEMA:
         raise RuntimeError(f"Invalid action table: {args.table}")
@@ -1311,6 +1369,7 @@ def train_gate(args: argparse.Namespace) -> None:
 
 
 def gate_selection(payload: dict[str, Any], checkpoint_path: Path, device: torch.device):
+    """Apply a trained expansion gate and return action selections."""
     checkpoint = load_torch(checkpoint_path)
     if checkpoint.get("schema") != "vigorm-b11-e5-expansion-gate-v1":
         raise RuntimeError(f"Invalid expansion gate: {checkpoint_path}")
@@ -1347,6 +1406,8 @@ def tune_controller_logits(
     cost_prior: torch.Tensor,
     budget: float,
 ):
+    """Tune the controller's compute penalty on validation queries."""
+
     table = payload["table"]
     rows = torch.arange(len(val_idx))
     exact = table["exact"][val_idx]
@@ -1372,6 +1433,7 @@ def tune_controller_logits(
 
 
 def train_controller(args: argparse.Namespace) -> None:
+    """Train the multiclass per-query Beam-width controller."""
     payload = load_torch(args.table)
     if payload.get("schema") != TABLE_SCHEMA:
         raise RuntimeError(f"Invalid action table: {args.table}")
@@ -1457,6 +1519,7 @@ def train_controller(args: argparse.Namespace) -> None:
 
 
 def controller_selection(payload: dict[str, Any], checkpoint_path: Path, device: torch.device):
+    """Apply a trained width controller and return action selections."""
     checkpoint = load_torch(checkpoint_path)
     if checkpoint.get("schema") != "vigorm-b11-e5-width-controller-v1":
         raise RuntimeError(f"Invalid controller checkpoint: {checkpoint_path}")
@@ -1481,15 +1544,18 @@ def controller_selection(payload: dict[str, Any], checkpoint_path: Path, device:
 
 
 def count_from_top_p(probabilities: torch.Tensor, threshold: float) -> torch.Tensor:
+    """Choose the smallest width whose cumulative probability reaches a threshold."""
     cumulative = probabilities.cumsum(dim=1)
     return (cumulative < threshold).sum(dim=1).add(1).clamp(1, 8)
 
 
 def count_from_margin(logp: torch.Tensor, delta: float) -> torch.Tensor:
+    """Count candidates whose log probability lies within a top-score margin."""
     return (logp >= logp[:, :1] - delta).sum(dim=1).clamp(1, 8)
 
 
 def entropy_width(entropy: torch.Tensor, thresholds: tuple[float, float, float]) -> torch.Tensor:
+    """Map uncertainty bands to widths 1, 2, 4, or 8."""
     output = torch.ones_like(entropy, dtype=torch.long)
     output[entropy >= thresholds[0]] = 3
     output[entropy >= thresholds[1]] = 5
@@ -1498,6 +1564,7 @@ def entropy_width(entropy: torch.Tensor, thresholds: tuple[float, float, float])
 
 
 def pair_selection(payload: dict[str, Any], k1: torch.Tensor, k2: torch.Tensor):
+    """Map per-query width pairs to action-table column indices."""
     mapping = {pair: index for index, pair in enumerate(payload["actions"])}
     return torch.tensor([mapping[(int(a), int(b))] for a, b in zip(k1, k2)], dtype=torch.long)
 
@@ -1507,6 +1574,8 @@ def tune_static_policy(
     val_idx: torch.Tensor,
     policy: str,
 ):
+    """Grid-search one non-learned adaptive-width policy."""
+
     subset = {
         **train_payload,
         "table": {key: value[val_idx] for key, value in train_payload["table"].items()},
@@ -1554,6 +1623,7 @@ def tune_static_policy(
 
 
 def apply_static_policy(payload: dict[str, Any], policy: str, parameter: tuple[float, ...]):
+    """Apply tuned top-p, margin, or entropy thresholds to every query."""
     if policy == "top_p":
         k1 = count_from_top_p(payload["root_top_probs"], parameter[0])
         l2 = payload["l2_top_probs_by_k1"][torch.arange(len(k1)), k1 - 1]
@@ -1571,6 +1641,7 @@ def apply_static_policy(payload: dict[str, Any], policy: str, parameter: tuple[f
 
 
 def budget_oracle(payload: dict[str, Any], budget: float):
+    """Compute an accuracy upper bound under an average candidate budget."""
     table = payload["table"]
     exact = table["exact"].float()
     near = table["within100"].float()
@@ -1594,6 +1665,8 @@ def flat_l3_metrics(
     batch_size: int = 512,
     query_indices: torch.Tensor | None = None,
 ):
+    """Compute the exhaustive L3 reference baseline for selected queries."""
+
     bundle = load_bundle(bundle_path)
     protocol = build_protocol(bundle)
     all_query = bundle["query_features"]
@@ -1640,6 +1713,7 @@ def flat_l3_metrics(
 
 
 def evaluate_tables(args: argparse.Namespace) -> None:
+    """Compare learned, static, and oracle policies from action tables."""
     train = load_torch(args.train_table)
     test = load_torch(args.test_table)
     calibrated = load_torch(args.calibrated_test_table)
@@ -1769,6 +1843,7 @@ def evaluate_tables(args: argparse.Namespace) -> None:
 
 
 def np_log_softmax(values: np.ndarray) -> np.ndarray:
+    """Compute a numerically stable NumPy log-softmax."""
     maximum = np.max(values)
     shifted = values - maximum
     return shifted - math.log(float(np.exp(shifted).sum()))
@@ -1783,6 +1858,8 @@ def best_first_one(
     gt_l3: int,
     temperature: float,
 ):
+    """Run priority-queue search for one query until the first L3 leaf wins."""
+
     root_order = np.argsort(root_logp)[::-1]
     root_position = 0
     heap: list[tuple[float, int, int]] = []
@@ -1844,6 +1921,7 @@ def best_first_one(
 
 
 def run_best_first(args: argparse.Namespace) -> None:
+    """Evaluate the experimental priority-queue hierarchical search."""
     bundle = load_bundle(args.bundle)
     protocol = build_protocol(bundle)
     device = torch.device(args.device)
@@ -1878,6 +1956,7 @@ def run_best_first(args: argparse.Namespace) -> None:
     gt = protocol.gt_l3[:total]
     distances = distances_for_predictions(protocol, predictions)[:total]
     def values(name):
+        """Extract one numeric field from accumulated query records."""
         return torch.tensor([row[name] for row in outputs], dtype=torch.float32)
     metrics = {
         "method": "Exact best-first MAP",
@@ -1909,6 +1988,7 @@ def run_best_first(args: argparse.Namespace) -> None:
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse subcommands for feature tables, policies, and final evaluation."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-folder", type=Path, default=DATA_ROOT)
     parser.add_argument("--metadata-folder", type=Path, default=METADATA_ROOT)
@@ -2006,6 +2086,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """Dispatch the requested VIGOR-M evaluation workflow."""
     global DATA_ROOT, METADATA_ROOT
     args = parse_args()
     DATA_ROOT = args.data_folder

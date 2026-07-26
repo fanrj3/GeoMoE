@@ -71,6 +71,7 @@ PATH_FEATURE_NAMES = (
 
 
 def seed_everything(seed: int) -> None:
+    """Seed Python, NumPy, and Torch for repeatable calibration splits."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -78,6 +79,7 @@ def seed_everything(seed: int) -> None:
 
 
 def atomic_torch_save(path: Path, payload: Any) -> None:
+    """Publish a Torch payload only after the temporary write succeeds."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     try:
@@ -89,6 +91,7 @@ def atomic_torch_save(path: Path, payload: Any) -> None:
 
 
 def atomic_json(path: Path, payload: Any) -> None:
+    """Write JSON through a temporary file to avoid partial reports."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     try:
@@ -100,6 +103,7 @@ def atomic_json(path: Path, payload: Any) -> None:
 
 
 def file_sha256(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
+    """Hash a file in bounded-memory chunks."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         while chunk := handle.read(chunk_size):
@@ -108,7 +112,10 @@ def file_sha256(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
 
 
 class PathCalibrator(nn.Module):
+    """Predict a residual correction from hierarchical path statistics."""
+
     def __init__(self, input_dim: int, hidden: int = 48):
+        """Build the small residual MLP used after Beam retrieval."""
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(input_dim),
@@ -122,23 +129,31 @@ class PathCalibrator(nn.Module):
         nn.init.zeros_(self.net[-1].bias)
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
+        """Return one correction logit for each final candidate."""
         return self.net(features).squeeze(-1)
 
 
 class IndexedDataset(Dataset):
+    """Attach stable indices so feature batches can be restored to source order."""
+
     def __init__(self, dataset: Dataset):
+        """Wrap a query or reference dataset."""
         self.dataset = dataset
 
     def __len__(self) -> int:
+        """Return the wrapped dataset size."""
         return len(self.dataset)
 
     def __getitem__(self, index: int):
+        """Return the image together with its original dataset index."""
         image, label = self.dataset[index]
         return image, label, int(index)
 
 
 @dataclass
 class SplitBundle:
+    """Aligned features and datasets for one train/validation/test split."""
+
     split: str
     query: torch.Tensor
     references: dict[str, torch.Tensor]
@@ -148,6 +163,8 @@ class SplitBundle:
 
 @dataclass
 class Protocol:
+    """Precomputed parent-child mappings used by hierarchical search."""
+
     l1_l2_indices: torch.Tensor
     l1_l2_mask: torch.Tensor
     l2_l3_indices: torch.Tensor
@@ -165,6 +182,8 @@ class Protocol:
 
 @dataclass
 class SearchOutput:
+    """Candidates, scores, masks, and calibration features from Beam search."""
+
     candidate_ids: torch.Tensor
     candidate_mask: torch.Tensor
     candidate_features: torch.Tensor
@@ -176,6 +195,7 @@ class SearchOutput:
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse JustZoomIn feature, Beam, calibration, and reporting options."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--checkpoint",
@@ -225,6 +245,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def validate_args(args: argparse.Namespace) -> None:
+    """Reject inconsistent widths, cache options, and missing checkpoints early."""
     args.checkpoint = args.checkpoint.expanduser().resolve()
     args.data_folder = args.data_folder.expanduser().resolve()
     args.output_dir = args.output_dir.expanduser().resolve()
@@ -249,6 +270,7 @@ def validate_args(args: argparse.Namespace) -> None:
 
 
 def build_model(args: argparse.Namespace, device: torch.device) -> LevelMoEFFNTimmModel:
+    """Construct the released GeoMoE encoder and restore its checkpoint."""
     model = LevelMoEFFNTimmModel(
         args.model,
         pretrained=False,
@@ -279,6 +301,7 @@ def build_model(args: argparse.Namespace, device: torch.device) -> LevelMoEFFNTi
 
 
 def build_transforms(args: argparse.Namespace):
+    """Build deterministic satellite and ground-image evaluation transforms."""
     probe = TimmModel(args.model, pretrained=False, img_size=args.img_size)
     config = probe.get_config()
     del probe
@@ -308,6 +331,8 @@ def make_dataset(
     img_type: str,
     transform,
 ) -> JustZoomInDatasetEval:
+    """Instantiate one split/level/query-reference dataset view."""
+
     config = resolve_justzoomin_level(level)
     dense = level in {"L1", "L2"}
     return JustZoomInDatasetEval(
@@ -332,6 +357,8 @@ def cache_path(
     img_type: str,
     count: int,
 ) -> Path:
+    """Return the content-specific feature-cache path for one dataset view."""
+
     dense_tag = "dense0p25" if level in {"L1", "L2"} else "native"
     return args.feature_cache_dir / (
         f"{split}_{img_type}_{level}_{dense_tag}_size{args.img_size}_"
@@ -340,6 +367,7 @@ def cache_path(
 
 
 def make_loader(dataset: Dataset, args: argparse.Namespace, device: torch.device):
+    """Create a deterministic, index-preserving feature loader."""
     kwargs: dict[str, Any] = {
         "batch_size": args.batch_size,
         "shuffle": False,
@@ -364,6 +392,8 @@ def extract_or_load(
     img_type: str,
     max_queries: int | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
+    """Load a validated feature cache or encode and atomically create it."""
+
     if img_type == "query" and max_queries is not None:
         dataset = Subset(dataset, range(min(max_queries, len(dataset))))
     path = cache_path(args, checkpoint_sha256, split, level, img_type, len(dataset))
@@ -417,6 +447,7 @@ def extract_or_load(
 
 
 def dense_idx_for_center(dataset, center_east: float, center_north: float) -> int:
+    """Locate the dense-grid reference containing a projected coordinate."""
     left = dataset.initial_center[0] - dataset.initial_size / 2.0
     top = dataset.initial_center[1] + dataset.initial_size / 2.0
     col = int(round((float(center_east) - left) / dataset.dense_stride_meters - 0.5))
@@ -427,6 +458,7 @@ def dense_idx_for_center(dataset, center_east: float, center_north: float) -> in
 
 
 def child_to_dense_parent(child_dataset, parent_dataset) -> torch.Tensor:
+    """Map each child tile center to its dense parent reference index."""
     return torch.tensor(
         [
             dense_idx_for_center(parent_dataset, *child_dataset.idx2tile_center[int(index)])
@@ -437,6 +469,7 @@ def child_to_dense_parent(child_dataset, parent_dataset) -> torch.Tensor:
 
 
 def groups_from_parents(parent_indices: torch.Tensor, parent_count: int) -> list[list[int]]:
+    """Invert a child-to-parent index into per-parent child groups."""
     groups = [[] for _ in range(parent_count)]
     for child, parent in enumerate(parent_indices.tolist()):
         groups[int(parent)].append(int(child))
@@ -444,6 +477,7 @@ def groups_from_parents(parent_indices: torch.Tensor, parent_count: int) -> list
 
 
 def pad_groups(groups: list[list[int]]) -> tuple[torch.Tensor, torch.Tensor]:
+    """Pad ragged child groups and return indices plus a validity mask."""
     maximum = max((len(group) for group in groups), default=0)
     if maximum <= 0:
         raise RuntimeError("Hierarchy has no child groups")
@@ -459,6 +493,7 @@ def pad_groups(groups: list[list[int]]) -> tuple[torch.Tensor, torch.Tensor]:
 
 
 def query_xy(dataset: JustZoomInDatasetEval, count: int) -> np.ndarray:
+    """Return query coordinates in the dataset's projected metric CRS."""
     coordinates = np.zeros((count, 2), dtype=np.float64)
     for output_index, (_, row) in enumerate(dataset.df.iloc[:count].iterrows()):
         coordinates[output_index] = _epsg26985_from_latlon(
@@ -468,6 +503,7 @@ def query_xy(dataset: JustZoomInDatasetEval, count: int) -> np.ndarray:
 
 
 def reference_xy(dataset: JustZoomInDatasetEval) -> np.ndarray:
+    """Return satellite-reference centers in projected metric coordinates."""
     return np.asarray(
         [dataset.idx2tile_center[int(index)] for index in dataset.images],
         dtype=np.float64,
@@ -475,6 +511,7 @@ def reference_xy(dataset: JustZoomInDatasetEval) -> np.ndarray:
 
 
 def move_from_latlon(latlon: np.ndarray, bearing_degrees: float, distance: float) -> np.ndarray:
+    """Move a latitude/longitude point along a geodesic bearing."""
     bearing = np.radians(bearing_degrees)
     source = np.radians(np.asarray(latlon, dtype=np.float64))
     angular_distance = float(distance) / EARTH_RADIUS_METERS
@@ -493,6 +530,7 @@ def move_from_latlon(latlon: np.ndarray, bearing_degrees: float, distance: float
 
 
 def sequence_center_latlon(sequence) -> np.ndarray:
+    """Estimate the geographic center represented by a panorama sequence."""
     center = move_from_latlon(np.asarray([38.8936, -77.0116]), 90.0, 2000.0)
     size = 10000.0
     for action in sequence:
@@ -507,12 +545,14 @@ def sequence_center_latlon(sequence) -> np.ndarray:
 
 
 def query_latlon(dataset: JustZoomInDatasetEval, count: int) -> np.ndarray:
+    """Return query locations in latitude/longitude order."""
     return dataset.df.loc[: count - 1, ["latitude", "longitude"]].to_numpy(
         dtype=np.float64, copy=True
     )
 
 
 def reference_latlon(dataset: JustZoomInDatasetEval) -> np.ndarray:
+    """Return satellite-reference centers in latitude/longitude order."""
     return np.asarray(
         [sequence_center_latlon(dataset.idx2tile[int(index)]) for index in dataset.images],
         dtype=np.float64,
@@ -524,6 +564,8 @@ def build_protocol(
     query_dataset: JustZoomInDatasetEval,
     query_count: int,
 ) -> Protocol:
+    """Build dense and regular hierarchy mappings shared by all query splits."""
+
     l1, l2, l3, l4 = (ref_datasets[level] for level in LEVELS)
     if not l1.use_dense_satellite_grid or not l2.use_dense_satellite_grid:
         raise RuntimeError("L1 and L2 must use dense stride-0.25 galleries")
@@ -600,6 +642,8 @@ def build_split_bundle(
     ground_transform,
     shared_dense_references: dict[str, torch.Tensor] | None = None,
 ) -> SplitBundle:
+    """Extract aligned L1-L4 features and ground-truth metadata for a split."""
+
     ref_datasets = {
         level: make_dataset(args, split, level, "reference", satellite_transform)
         for level in LEVELS
@@ -644,6 +688,8 @@ def build_split_bundle(
 def masked_log_softmax(
     logits: torch.Tensor, mask: torch.Tensor, dim: int
 ) -> torch.Tensor:
+    """Compute log probabilities while excluding padded candidates."""
+
     has_candidate = mask.any(dim=dim, keepdim=True)
     masked = logits.masked_fill(~mask, -float("inf"))
     safe = torch.where(has_candidate, masked, torch.zeros_like(masked))
@@ -653,6 +699,8 @@ def masked_log_softmax(
 def gather_scores(
     query: torch.Tensor, references: torch.Tensor, indices: torch.Tensor
 ) -> torch.Tensor:
+    """Score per-query candidate indices against a reference feature bank."""
+
     selected = references.index_select(0, indices.reshape(-1)).reshape(
         *indices.shape, references.shape[1]
     )
@@ -661,12 +709,14 @@ def gather_scores(
 
 
 def normalized_entropy(probabilities: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    """Measure candidate uncertainty on a zero-to-one scale."""
     count = mask.sum(dim=1).clamp_min(2).float()
     entropy = -(probabilities * probabilities.clamp_min(1e-12).log()).sum(dim=1)
     return entropy / count.log()
 
 
 def distribution_state(scores: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Summarize a score distribution by validity, entropy, and top margin."""
     finite = torch.isfinite(scores)
     probabilities = F.softmax(scores.masked_fill(~finite, -float("inf")), dim=1)
     entropy = normalized_entropy(probabilities, finite)
@@ -684,6 +734,8 @@ def provenance(
     flat_scores: torch.Tensor,
     selected_ids: torch.Tensor,
 ) -> torch.Tensor:
+    """Find the highest-scoring parent occurrence of each merged child."""
+
     matches = flat_ids.unsqueeze(1).eq(selected_ids.unsqueeze(2))
     candidate_scores = flat_scores.unsqueeze(1).expand(-1, selected_ids.shape[1], -1)
     return candidate_scores.masked_fill(~matches, -float("inf")).argmax(dim=2)
@@ -697,6 +749,8 @@ def search_candidates(
     temperature: float,
     beam_width: int,
 ) -> SearchOutput:
+    """Run L1-to-L4 Beam search and assemble path-calibration features."""
+
     device = query.device
     l1_l2_indices = protocol.l1_l2_indices.to(device)
     l1_l2_mask = protocol.l1_l2_mask.to(device)
@@ -706,6 +760,8 @@ def search_candidates(
     l3_l4_mask = protocol.l3_l4_mask.to(device)
     r1, r2, r3, r4 = (references[level] for level in LEVELS)
 
+    # Roots without a path to L4 are excluded before normalizing the global L1
+    # response. This keeps the root distribution consistent with the gallery.
     root_valid = l1_l2_mask.any(dim=1)
     root_mask = root_valid.unsqueeze(0).expand(len(query), -1)
     root_logp = masked_log_softmax(
@@ -731,6 +787,8 @@ def search_candidates(
     flat_l1_score = l1_scores.unsqueeze(2).expand_as(l2_local).flatten(1)
     flat_l2_local = l2_local.flatten(1)
     flat_l2_raw = l2_raw.flatten(1)
+    # Dense grids can expose the same child through overlapping parent windows.
+    # Merge duplicate paths by their strongest accumulated log probability.
     merged_l2 = query.new_full((len(query), len(r2)), -float("inf"))
     merged_l2.scatter_reduce_(
         1, flat_l2_ids, flat_l2_path, reduce="amax", include_self=True
@@ -758,6 +816,8 @@ def search_candidates(
     flat_l3_local = l3_local.flatten(1)
     flat_l3_raw = l3_raw.flatten(1)
     expand_l3 = lambda value: value.unsqueeze(2).expand_as(l3_local).flatten(1)
+    # Preserve the best provenance for duplicate L3 candidates so later path
+    # features describe the path that actually survived Beam pruning.
     merged_l3 = query.new_full((len(query), len(r3)), -float("inf"))
     merged_l3.scatter_reduce_(
         1, flat_l3_ids, flat_l3_path, reduce="amax", include_self=True
@@ -799,6 +859,8 @@ def search_candidates(
     rank_denominator = float(max(1, beam_width - 1))
     child_denominator = float(l4_candidates.shape[2])
     l4_rank_denominator = float(max(1, l4_candidates.shape[2] - 1))
+    # PRC sees retrieval evidence only: accumulated/local scores, Beam ranks,
+    # and distribution uncertainty. No coordinates or ground truth leak in.
     features = torch.stack(
         [
             base_scores,
@@ -847,6 +909,7 @@ def search_candidates(
 
 
 def split_indices(total: int, seed: int, val_fraction: float):
+    """Create deterministic disjoint calibration-train and validation indices."""
     generator = torch.Generator().manual_seed(seed)
     order = torch.randperm(total, generator=generator)
     val_count = int(round(total * val_fraction))
@@ -860,6 +923,8 @@ def feature_statistics(
     args: argparse.Namespace,
     device: torch.device,
 ) -> tuple[torch.Tensor, torch.Tensor]:
+    """Estimate mean and scale for valid path-feature columns."""
+
     total = torch.zeros(len(PATH_FEATURE_NAMES), dtype=torch.float64, device=device)
     square = torch.zeros_like(total)
     count = 0
@@ -895,6 +960,8 @@ def exact_accuracy(
     feature_std: torch.Tensor,
     device: torch.device,
 ) -> dict[str, float]:
+    """Measure exact R@1 and whether ground truth survives candidate pruning."""
+
     correct = covered = total = 0
     calibrator_was_training = calibrator.training if calibrator is not None else False
     if calibrator is not None:
@@ -933,6 +1000,8 @@ def train_calibrator(
     args: argparse.Namespace,
     device: torch.device,
 ) -> tuple[PathCalibrator, torch.Tensor, torch.Tensor, dict[str, Any]]:
+    """Fit the residual path calibrator on a held-out training split."""
+
     train_indices, val_indices = split_indices(
         len(bundle.query), args.seed, args.val_fraction
     )
@@ -1046,6 +1115,8 @@ def metrics_from_predictions(
     stage_indices: tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None = None,
     coverage: torch.Tensor | None = None,
 ) -> dict[str, Any]:
+    """Compute exact retrieval and metric-distance results for predictions."""
+
     prediction_np = prediction.cpu().numpy()
     projected_distances = np.linalg.norm(
         protocol.reference_xy[prediction_np] - protocol.query_xy[: len(prediction_np)],
@@ -1110,6 +1181,8 @@ def evaluate_beam(
     feature_std: torch.Tensor,
     device: torch.device,
 ) -> tuple[list[dict[str, Any]], dict[str, torch.Tensor]]:
+    """Evaluate hierarchical Beam retrieval with and without PRC correction."""
+
     references = {
         level: bundle.references[level].to(device, non_blocking=True) for level in LEVELS
     }
@@ -1199,6 +1272,8 @@ def evaluate_flat(
     args: argparse.Namespace,
     device: torch.device,
 ) -> tuple[dict[str, Any], torch.Tensor]:
+    """Evaluate exhaustive retrieval over all final-level references."""
+
     reference = bundle.references["L4"].to(device, non_blocking=True)
     predictions = []
     for start in tqdm(
@@ -1226,6 +1301,8 @@ def load_calibrator_checkpoint(
     checkpoint_sha256: str,
     device: torch.device,
 ) -> tuple[PathCalibrator, torch.Tensor, torch.Tensor, dict[str, Any]]:
+    """Restore a calibrator and validate its backbone and feature schema."""
+
     payload = torch.load(path, map_location="cpu", weights_only=False)
     if payload.get("schema") != "justzoomin-b11-e5-four-level-path-calibrator-v1":
         raise RuntimeError(f"Invalid calibrator checkpoint: {path}")
@@ -1244,6 +1321,7 @@ def load_calibrator_checkpoint(
 
 
 def main() -> None:
+    """Prepare features, train/load calibration, evaluate, and write reports."""
     args = parse_args()
     validate_args(args)
     seed_everything(args.seed)

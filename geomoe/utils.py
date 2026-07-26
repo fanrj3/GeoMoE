@@ -1,3 +1,5 @@
+"""Runtime, logging, reproducibility, and timing helpers."""
+
 import os
 import sys
 import random
@@ -19,12 +21,14 @@ class AverageMeter:
         self.count = 0
 
     def reset(self):
+        """Clear all accumulated values."""
         self.val = 0
         self.avg = 0
         self.sum = 0
         self.count = 0
 
     def update(self, val):
+        """Add one scalar observation."""
         self.val = val
         self.sum += val
         self.count += 1
@@ -49,6 +53,7 @@ def setup_system(seed, cudnn_benchmark=True, cudnn_deterministic=True) -> None:
 
 
 def mkdir_if_missing(dir_path):
+    """Create a directory while tolerating an existing target."""
     try:
         os.makedirs(dir_path)
     except OSError as e:
@@ -56,6 +61,7 @@ def mkdir_if_missing(dir_path):
             raise
 
 class Logger(object):
+    """Mirror stdout to an experiment log file."""
     def __init__(self, fpath=None):
         self.console = sys.stdout
         self.file = None
@@ -73,23 +79,27 @@ class Logger(object):
         self.close()
 
     def write(self, msg):
+        """Write a message to both terminal and file streams."""
         self.console.write(msg)
         if self.file is not None:
             self.file.write(msg)
 
     def flush(self):
+        """Flush both output streams."""
         self.console.flush()
         if self.file is not None:
             self.file.flush()
             os.fsync(self.file.fileno())
 
     def close(self):
+        """Close the configured output streams."""
         self.console.close()
         if self.file is not None:
             self.file.close()
 
 
 def sec_to_min(seconds):
+    """Format a duration as unbounded minutes and two-digit seconds."""
 
     seconds = int(seconds)
     minutes = seconds // 60
@@ -101,9 +111,11 @@ def sec_to_min(seconds):
     return '{}:{}'.format(minutes, seconds_remaining)
 
 def sec_to_time(seconds):
+    """Format a duration using ``datetime.timedelta`` semantics."""
     return "{:0>8}".format(str(timedelta(seconds=int(seconds))))
 
 def print_time_stats(t_train_start, t_epoch_start, epochs_remaining, steps_per_epoch):
+    """Print elapsed time, batch speed, and a coarse remaining-time estimate."""
 
     elapsed_time = time.time() - t_train_start
     speed_epoch = time.time() - t_epoch_start

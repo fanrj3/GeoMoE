@@ -39,13 +39,18 @@ from geomoe.utils import setup_system
 
 @dataclass
 class PredictConfig:
+    """Minimal configuration consumed by the shared feature extractor."""
+
     device: str
     verbose: bool = True
     normalize_features: bool = True
 
 
 class MetricAccumulator:
+    """Accumulate retrieval ranks and geodesic errors without storing scores."""
+
     def __init__(self, name, num_candidates, center_lat, center_lon):
+        """Initialize counters for one scoring method."""
         self.name = name
         self.ranks = [1, 5, 10]
         self.top1_percent_k = max(1, int(num_candidates) // 100)
@@ -59,6 +64,7 @@ class MetricAccumulator:
         self.distances = []
 
     def update(self, scores, gt_indices, query_lat, query_lon):
+        """Add one score batch and its ground-truth query coordinates."""
         if scores.ndim != 2:
             raise ValueError(f"scores must be 2-D, got shape={tuple(scores.shape)}")
 
@@ -86,6 +92,7 @@ class MetricAccumulator:
             self.distance_hits[threshold] += int((distances <= threshold).sum())
 
     def finalize(self):
+        """Convert accumulated counters into report-ready percentages."""
         if self.total == 0:
             raise RuntimeError(f"No samples accumulated for {self.name}")
 
@@ -109,10 +116,12 @@ class MetricAccumulator:
 
 
 def percent(value, total):
+    """Express a count as a percentage of the total."""
     return float(value) / float(total) * 100.0
 
 
 def parse_args():
+    """Parse the legacy hierarchical-ablation command line."""
     parser = argparse.ArgumentParser(
         description="Evaluate VIGOR-M L1/L2/L3 hierarchical ablations."
     )
@@ -163,12 +172,14 @@ def parse_args():
 
 
 def resolve_path(path):
+    """Expand an optional user path to an absolute path."""
     if path is None:
         return None
     return Path(path).expanduser().resolve()
 
 
 def latest_run_dir(model_root, level, model_name):
+    """Find the most recently modified run directory for one level."""
     root = Path(model_root) / level / model_name
     if not root.exists():
         raise FileNotFoundError(f"Missing model directory: {root}")
@@ -179,6 +190,7 @@ def latest_run_dir(model_root, level, model_name):
 
 
 def best_checkpoint(run_dir):
+    """Select the checkpoint with the highest score encoded in its filename."""
     pattern = re.compile(r"weights_e(\d+)_([0-9.]+)\.pth$")
     candidates = []
     for path in Path(run_dir).glob("weights_e*.pth"):
@@ -194,6 +206,7 @@ def best_checkpoint(run_dir):
 
 
 def checkpoint_for_level(args, level):
+    """Resolve explicit, final, or best weights for a hierarchy level."""
     explicit = getattr(args, f"{level.lower()}_checkpoint")
     if explicit:
         checkpoint = resolve_path(explicit)
@@ -218,6 +231,7 @@ def checkpoint_for_level(args, level):
 
 
 def load_model(args, checkpoint_path):
+    """Build the single-level encoder and load a release checkpoint."""
     model = TimmModel(args.model, pretrained=False, img_size=args.img_size)
     state_dict = torch.load(checkpoint_path, map_location="cpu")
     if any(key.startswith("module.") for key in state_dict):
@@ -235,6 +249,7 @@ def load_model(args, checkpoint_path):
 
 
 def build_transforms(args):
+    """Build validation transforms from the backbone's normalization metadata."""
     model = TimmModel(args.model, pretrained=False, img_size=args.img_size)
     data_config = model.get_config()
     mean = data_config["mean"]
@@ -256,6 +271,7 @@ def build_transforms(args):
 
 
 def extract_level_features(args, level, checkpoint, sat_transform, ground_transform):
+    """Extract or reuse aligned query/reference features for one level."""
     cache_dir = (
         Path(args.feature_cache_dir)
         if args.feature_cache_dir is not None
@@ -339,6 +355,7 @@ def extract_level_features(args, level, checkpoint, sat_transform, ground_transf
 
 
 def normalize_scores(scores, mode):
+    """Normalize each query's scores before cross-level multiplication."""
     if mode == "raw":
         return scores
     if mode == "minmax":
@@ -349,6 +366,7 @@ def normalize_scores(scores, mode):
 
 
 def parse_tile(tile_id):
+    """Parse regular and dense-stride VIGOR-M tile identifiers."""
     parts = tile_id.split("_")
     if len(parts) >= 5 and parts[2].startswith("s"):
         city = parts[0]
@@ -367,6 +385,7 @@ def parse_tile(tile_id):
 
 
 def parent_tile(tile_id, target_level):
+    """Map a regular tile identifier to an ancestor level."""
     city, level, row, col, _stride = parse_tile(tile_id)
     source_depth = int(level[1:])
     target_depth = int(target_level[1:])
@@ -377,6 +396,7 @@ def parent_tile(tile_id, target_level):
 
 
 def dense_l1_parent_tile(tile_id, stride_fraction):
+    """Map a child tile center to its nearest dense L1 reference."""
     city, level, row, col, _stride = parse_tile(tile_id)
     source_depth = int(level[1:])
     axis_scale = 4 ** (source_depth - 1)
@@ -391,6 +411,7 @@ def dense_l1_parent_tile(tile_id, stride_fraction):
 
 
 def build_parent_indices(child_tiles, parent_tiles, parent_level):
+    """Return the parent-reference index for every child tile."""
     parent_to_idx = {tile: idx for idx, tile in enumerate(parent_tiles)}
     dense_l1_stride = None
     if parent_level == "L1":
@@ -418,6 +439,7 @@ def build_parent_indices(child_tiles, parent_tiles, parent_level):
 
 
 def load_query_rows(data_folder, metadata_folder, split="test", same_area=True):
+    """Load valid geotagged panorama rows in dataset query order."""
     rows = []
     cities = VIGOR_M_CITIES if same_area else ["Chicago", "SanFrancisco"]
     for city in cities:
@@ -431,6 +453,7 @@ def load_query_rows(data_folder, metadata_folder, split="test", same_area=True):
 
 
 def load_city_bounds(data_folder):
+    """Load each city's L0 geographic extent."""
     summary_path = _vigor_m_bounds_path(data_folder)
     df = pd.read_csv(summary_path)
     bounds = {}
@@ -445,6 +468,7 @@ def load_city_bounds(data_folder):
 
 
 def tile_center_latlon(tile_id, bounds):
+    """Convert a tile identifier to the latitude/longitude of its center."""
     city, level, row, col, _stride = parse_tile(tile_id)
     axis = 4 ** int(level[1:])
     min_lon, min_lat, max_lon, max_lat = bounds[city]
@@ -454,6 +478,7 @@ def tile_center_latlon(tile_id, bounds):
 
 
 def haversine_np(lat1, lon1, lat2, lon2):
+    """Compute vectorized great-circle distances in metres."""
     radius_m = 6371000.0
     lat1 = np.radians(lat1.astype(np.float64))
     lon1 = np.radians(lon1.astype(np.float64))
@@ -469,6 +494,7 @@ def haversine_np(lat1, lon1, lat2, lon2):
 
 
 def validate_alignment(level_features, query_rows):
+    """Reject caches whose query order or L3 labels differ across levels."""
     query_images = level_features["L1"]["query_images"]
     for level in ["L2", "L3"]:
         if level_features[level]["query_images"] != query_images:
@@ -495,6 +521,7 @@ def validate_alignment(level_features, query_rows):
 
 
 def evaluate_methods(args, features, query_rows):
+    """Compare flat, score-fusion, and hard-cascade retrieval protocols."""
     l1_tiles = features["L1"]["tile_list"]
     l2_tiles = features["L2"]["tile_list"]
     l3_tiles = features["L3"]["tile_list"]
@@ -593,6 +620,7 @@ def evaluate_methods(args, features, query_rows):
 
 
 def write_reports(args, checkpoints, results):
+    """Write machine-readable and Markdown ablation reports."""
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -626,6 +654,7 @@ def write_reports(args, checkpoints, results):
 
 
 def main():
+    """Extract level features, score all ablations, and save reports."""
     args = parse_args()
     if args.output_dir is None:
         args.output_dir = str(

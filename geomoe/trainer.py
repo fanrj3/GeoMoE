@@ -1,3 +1,5 @@
+"""Small single-process training and feature-extraction loops."""
+
 import time
 import torch
 from tqdm import tqdm
@@ -6,6 +8,11 @@ from torch.cuda.amp import autocast
 import torch.nn.functional as F
 
 def train(train_config, model, dataloader, loss_function, optimizer, scheduler=None, scaler=None):
+    """Train ``model`` for one epoch and return the mean batch loss.
+
+    The release-specific DDP entrypoints implement their own level-aware loop;
+    this helper supports baseline and single-process workflows.
+    """
 
     # set model train mode
     model.train()
@@ -111,6 +118,7 @@ def train(train_config, model, dataloader, loss_function, optimizer, scheduler=N
 
 
 def predict(train_config, model, dataloader):
+    """Extract normalized float32 descriptors and dataset identifiers."""
 
     model.eval()
 

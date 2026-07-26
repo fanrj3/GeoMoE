@@ -1,3 +1,5 @@
+"""Contrastive objectives used by GeoMoE training pipelines."""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,6 +9,7 @@ from torch.distributed.nn.functional import all_gather as all_gather_with_grad
 
 
 class InfoNCE(nn.Module):
+    """Symmetric in-batch InfoNCE for aligned query/reference pairs."""
 
     def __init__(self, loss_function, device='cuda' if torch.cuda.is_available() else 'cpu'):
         super().__init__()
@@ -14,6 +17,7 @@ class InfoNCE(nn.Module):
         self.device = device
 
     def forward(self, image_features1, image_features2, logit_scale):
+        """Return the mean query-to-reference and reference-to-query loss."""
         image_features1 = F.normalize(image_features1, dim=-1)
         image_features2 = F.normalize(image_features2, dim=-1)
 
@@ -49,11 +53,13 @@ class LevelWiseInfoNCE(nn.Module):
         self.level_weights = level_weights
 
     def _gather_features(self, tensor):
+        """Gather features across ranks while preserving autograd edges."""
         if not self.distributed or not dist.is_available() or not dist.is_initialized():
             return tensor
         return torch.cat(all_gather_with_grad(tensor), dim=0)
 
     def _gather_ids(self, tensor):
+        """Gather non-differentiable level identifiers across DDP ranks."""
         if not self.distributed or not dist.is_available() or not dist.is_initialized():
             return tensor
         gathered = [torch.zeros_like(tensor) for _ in range(dist.get_world_size())]
@@ -68,6 +74,7 @@ class LevelWiseInfoNCE(nn.Module):
         return torch.tensor(float(self.level_weights[int(level_id)]), device=device)
 
     def forward(self, image_features1, image_features2, logit_scale, level_ids, return_stats=False):
+        """Compute one contrastive matrix per represented resolution level."""
         image_features1 = F.normalize(image_features1, dim=-1)
         image_features2 = F.normalize(image_features2, dim=-1)
         level_ids = level_ids.to(image_features1.device, dtype=torch.long)

@@ -29,6 +29,7 @@ SOURCE_RE = re.compile(
 
 @dataclass(frozen=True)
 class Grid:
+    """Geographic L0 bounds and deterministic hierarchy indexing for one city."""
     city: str
     min_lon: float
     min_lat: float
@@ -36,6 +37,7 @@ class Grid:
     max_lat: float
 
     def contains(self, lat: float, lon: float) -> bool:
+        """Return whether a panorama coordinate lies inside the city L0 box."""
         eps = 1e-10
         return (
             self.min_lat - eps <= lat <= self.max_lat + eps
@@ -43,6 +45,7 @@ class Grid:
         )
 
     def tile_id(self, level: int, lat: float, lon: float) -> str:
+        """Map a coordinate to the containing row-major tile at ``level``."""
         n = 4**level
         tile_w = (self.max_lon - self.min_lon) / n
         tile_h = (self.max_lat - self.min_lat) / n
@@ -54,6 +57,7 @@ class Grid:
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse dataset roots and deterministic split parameters."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT)
     parser.add_argument(
@@ -68,6 +72,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def resolve_panorama_root(root: Path) -> Path:
+    """Locate the panorama directory across supported source layouts."""
     for candidate in (root / "panoramas", root / "Pano"):
         if candidate.is_dir():
             return candidate
@@ -75,6 +80,7 @@ def resolve_panorama_root(root: Path) -> Path:
 
 
 def resolve_satellite_root(root: Path) -> Path:
+    """Locate the satellite directory across supported source layouts."""
     for candidate in (root / "satellite", root / "level"):
         if candidate.is_dir():
             return candidate
@@ -82,6 +88,7 @@ def resolve_satellite_root(root: Path) -> Path:
 
 
 def resolve_bounds_path(root: Path) -> Path:
+    """Locate raw or previously generated city-boundary metadata."""
     candidates = (
         root / "metadata" / "city_bounds.csv",
         root / "figures" / "pano_distribution" / "pano_distribution_summary.csv",
@@ -96,6 +103,7 @@ def resolve_bounds_path(root: Path) -> Path:
 
 
 def load_grids(root: Path) -> dict[str, Grid]:
+    """Load and validate city bounds for all four benchmark cities."""
     summary_path = resolve_bounds_path(root)
     grids: dict[str, Grid] = {}
     with summary_path.open(newline="") as f:
@@ -117,11 +125,13 @@ def load_grids(root: Path) -> dict[str, Grid]:
 
 
 def hash_score(key: str) -> float:
+    """Map a stable sample key to a deterministic value in ``[0, 1)``."""
     digest = hashlib.sha1(key.encode("utf-8")).hexdigest()
     return int(digest[:12], 16) / float(16**12)
 
 
 def parse_pano(path: Path) -> tuple[float, float, str] | None:
+    """Extract latitude, longitude, and panorama id from a source filename."""
     match = SOURCE_RE.match(path.name)
     if match is None:
         return None
@@ -135,6 +145,7 @@ def build_rows(
     root: Path,
     grids: dict[str, Grid],
 ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Build complete hierarchy rows and separately report invalid panoramas."""
     rows: list[dict[str, str]] = []
     unmatched: list[dict[str, str]] = []
     pano_root = resolve_panorama_root(root)
@@ -202,6 +213,7 @@ def split_rows(
     same_area_test_ratio: float,
     cross_train_cities: set[str],
 ) -> dict[str, list[dict[str, str]]]:
+    """Create deterministic same-area and city-held-out split memberships."""
     splits = {
         "same_area_train": [],
         "same_area_test": [],
@@ -226,6 +238,7 @@ def split_rows(
 
 
 def write_rows(path: Path, rows: list[dict[str, str]]) -> None:
+    """Write metadata rows in the canonical release column order."""
     columns = ["city", "ground", "ground_path", "lat", "lon", "L0", "L1", "L2", "L3"]
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as f:
@@ -236,6 +249,7 @@ def write_rows(path: Path, rows: list[dict[str, str]]) -> None:
 
 
 def write_unmatched(path: Path, rows: list[dict[str, str]]) -> None:
+    """Write excluded panorama paths together with explicit reasons."""
     columns = ["city", "ground_path", "reason"]
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as f:
@@ -246,6 +260,7 @@ def write_unmatched(path: Path, rows: list[dict[str, str]]) -> None:
 
 
 def main() -> int:
+    """Generate custom metadata without modifying the frozen paper splits."""
     args = parse_args()
     root = args.root.resolve()
     output = (args.output or (root / "metadata-generated")).resolve()

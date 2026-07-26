@@ -23,6 +23,7 @@ EXPECTED_SPLIT_COUNTS = {
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse source assets, frozen metadata, and staging mode."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--source-root",
@@ -52,6 +53,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def resolve_asset_dir(root: Path, canonical: str, legacy: str) -> Path:
+    """Resolve canonical release names while accepting the original layout."""
     for candidate in (root / canonical, root / legacy):
         if candidate.is_dir():
             return candidate
@@ -61,6 +63,7 @@ def resolve_asset_dir(root: Path, canonical: str, legacy: str) -> Path:
 
 
 def resolve_bounds_path(root: Path) -> Path:
+    """Locate city bounds in canonical or original metadata locations."""
     candidates = (
         root / "metadata" / "city_bounds.csv",
         root / "figures" / "pano_distribution" / "pano_distribution_summary.csv",
@@ -75,6 +78,7 @@ def resolve_bounds_path(root: Path) -> Path:
 
 
 def file_sha256(path: Path) -> str:
+    """Stream a file into SHA-256 without loading it into memory."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         while chunk := handle.read(8 * 1024 * 1024):
@@ -83,6 +87,7 @@ def file_sha256(path: Path) -> str:
 
 
 def stage_asset_tree(source: Path, destination: Path, mode: str) -> None:
+    """Stage an asset directory by symlink, hardlink, or physical copy."""
     if mode == "symlink":
         destination.symlink_to(source.resolve(), target_is_directory=True)
         return
@@ -91,6 +96,7 @@ def stage_asset_tree(source: Path, destination: Path, mode: str) -> None:
 
 
 def portable_ground_path(row: dict[str, str]) -> str:
+    """Rewrite an arbitrary source panorama path to release-relative form."""
     value = row.get("ground_path", "").strip()
     if not value:
         return value
@@ -101,6 +107,7 @@ def portable_ground_path(row: dict[str, str]) -> str:
 
 
 def rewrite_metadata(source: Path, destination: Path) -> dict[str, dict[str, str]]:
+    """Copy CSV metadata, rewriting paths and recording before/after hashes."""
     csv_paths = sorted(source.rglob("*.csv"))
     if not csv_paths:
         raise FileNotFoundError(f"No CSV metadata found under {source}")
@@ -134,11 +141,13 @@ def rewrite_metadata(source: Path, destination: Path) -> dict[str, dict[str, str
 
 
 def read_rows(path: Path) -> list[dict[str, str]]:
+    """Read one metadata CSV as dictionaries."""
     with path.open(newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
 
 
 def validate_release(root: Path, allow_count_mismatch: bool) -> dict[str, object]:
+    """Validate split counts, portable paths, and every referenced asset."""
     metadata_root = root / "metadata"
     split_counts = {
         name: len(read_rows(metadata_root / name))
@@ -204,6 +213,7 @@ def validate_release(root: Path, allow_count_mismatch: bool) -> dict[str, object
 
 
 def write_release_readme(path: Path) -> None:
+    """Write usage and licensing notes into the staged dataset root."""
     path.write_text(
         """# VIGOR-M Release Layout
 
@@ -239,6 +249,7 @@ publishing or using this bundle.
 
 
 def build_release(args: argparse.Namespace) -> Path:
+    """Build and atomically publish a validated VIGOR-M release directory."""
     source_root = args.source_root.expanduser().resolve()
     metadata_source = args.metadata_source.expanduser().resolve()
     output = args.output.expanduser().resolve()
@@ -284,6 +295,7 @@ def build_release(args: argparse.Namespace) -> Path:
 
 
 def main() -> int:
+    """Run release staging and print the resolved output path."""
     args = parse_args()
     output = build_release(args)
     print(f"VIGOR-M release ready: {output}")

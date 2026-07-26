@@ -1,3 +1,5 @@
+"""Albumentations pipelines shared by GeoMoE training and evaluation."""
+
 import cv2
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
@@ -5,6 +7,7 @@ from albumentations.core.transforms_interface import ImageOnlyTransform
 
 
 class Cut(ImageOnlyTransform):
+    """Remove a fixed number of rows from the top and bottom of an image."""
     def __init__(self,
                  cutting=None,
                  always_apply=False,
@@ -15,6 +18,7 @@ class Cut(ImageOnlyTransform):
 
 
     def apply(self, image, **params):
+        """Apply the configured symmetric vertical crop."""
 
         if self.cutting:
             image = image[self.cutting:-self.cutting,:,:]
@@ -32,6 +36,7 @@ def get_transforms_train(image_size_sat,
                          mean=[0.485, 0.456, 0.406],
                          std=[0.229, 0.224, 0.225],
                          ground_cutting=0):
+    """Build independent stochastic pipelines for satellite and ground views."""
 
 
 
@@ -92,6 +97,7 @@ def get_transforms_val(image_size_sat,
                        mean=[0.485, 0.456, 0.406],
                        std=[0.229, 0.224, 0.225],
                        ground_cutting=0):
+    """Build deterministic resize/normalize pipelines for evaluation."""
 
 
 

@@ -1,3 +1,5 @@
+"""Backbone wrappers and level-aware mixture-of-experts building blocks."""
+
 import copy
 
 import torch
@@ -7,6 +9,7 @@ import torch.nn as nn
 
 
 def _level_value_from_name(level):
+    """Convert labels such as ``L2`` or ``L25`` to numeric scale values."""
     text = str(level).strip().upper().replace("P", ".")
     if text.startswith("L"):
         text = text[1:]
@@ -16,6 +19,7 @@ def _level_value_from_name(level):
 
 
 class TimmModel(nn.Module):
+    """Thin timm retrieval encoder with a learnable contrastive temperature."""
 
     def __init__(self,
                  model_name,
@@ -44,15 +48,18 @@ class TimmModel(nn.Module):
 
 
     def get_config(self,):
+        """Return timm's preprocessing configuration for this backbone."""
         data_config = timm.data.resolve_model_data_config(self.model)
         return data_config
 
 
     def set_grad_checkpointing(self, enable=True):
+        """Forward gradient-checkpointing control to the timm backbone."""
         self.model.set_grad_checkpointing(enable)
 
 
     def forward(self, img1, img2=None):
+        """Encode one image batch or an aligned pair of image batches."""
 
         if img2 is not None:
 
@@ -136,15 +143,18 @@ class LevelSplitTimmModel(nn.Module):
         self.logit_scale = torch.nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
     def get_config(self):
+        """Return timm's preprocessing configuration for this backbone."""
         return timm.data.resolve_model_data_config(self.model)
 
     def set_grad_checkpointing(self, enable=True):
+        """Enable checkpointing on the manually executed shared backbone."""
         # The split tail is executed manually, so timm's checkpoint_seq path is
         # not used here. Keep this method for interface compatibility.
         if hasattr(self.model, "set_grad_checkpointing"):
             self.model.set_grad_checkpointing(enable)
 
     def _level_ids(self, levels, batch_size, device):
+        """Normalize scalar, string, sequence, or tensor level specifications."""
         if levels is None:
             level_id = self.level_to_id[self.default_level]
             return torch.full((batch_size,), level_id, dtype=torch.long, device=device)
@@ -166,6 +176,7 @@ class LevelSplitTimmModel(nn.Module):
         return torch.tensor(mapped, dtype=torch.long, device=device)
 
     def encode(self, img, levels=None):
+        """Run the shared ViT prefix and dispatch samples to level-specific tails."""
         level_ids = self._level_ids(levels, img.shape[0], img.device)
 
         x = self.model.patch_embed(img)
@@ -194,6 +205,7 @@ class LevelSplitTimmModel(nn.Module):
         return out
 
     def forward(self, img1, img2=None, levels=None):
+        """Encode one batch or a paired query/reference batch at given levels."""
         if img2 is not None:
             image_features1 = self.encode(img1, levels=levels)
             image_features2 = self.encode(img2, levels=levels)
@@ -239,6 +251,7 @@ class RoutedMoEFFN(nn.Module):
         nn.init.zeros_(self.router.bias)
 
     def forward(self, x, router_condition=None):
+        """Apply the normalized top-k mixture and return routing diagnostics."""
         if self.top_k < 1 or self.top_k > self.num_experts:
             raise ValueError(f"top_k must be in [1, {self.num_experts}], got {self.top_k}")
 
@@ -335,6 +348,7 @@ class SharedLevelPrivateFFN(nn.Module):
         nn.init.zeros_(self.router.bias)
 
     def forward(self, x, private_weights, router_condition=None):
+        """Blend the shared branch with interpolated private-expert outputs."""
         if private_weights is None:
             raise ValueError("private_weights is required for shared_level_private routing")
         if private_weights.shape != (x.shape[0], self.num_private_experts):
@@ -447,6 +461,7 @@ class MoEFFNBlock(nn.Module):
         self.drop_path2 = copy.deepcopy(block.drop_path2)
 
     def forward(self, x, router_condition=None, private_weights=None):
+        """Run attention, the selected expert layout, and both residual updates."""
         x = x + self.drop_path1(self.ls1(self.attn(self.norm1(x))))
         if self.expert_layout == "shared_level_private":
             y, aux_loss, stats = self.moe(
@@ -463,7 +478,13 @@ class MoEFFNBlock(nn.Module):
 
 
 class LevelMoEFFNTimmModel(nn.Module):
-    """ViT model with a single attention path and MoE FFNs in late blocks."""
+    """ViT encoder with shared attention and level-aware late-block MoE FFNs.
+
+    Starting at ``moe_start_block``, the original MLP is replaced by either a
+    top-k routed bank or a shared-plus-level-private bank. Per-block routing
+    statistics are retained for diagnostics, and the optional auxiliary loss
+    encourages balanced expert utilization.
+    """
 
     def __init__(
         self,
@@ -561,14 +582,17 @@ class LevelMoEFFNTimmModel(nn.Module):
         self.last_moe_stats = {}
 
     def get_config(self):
+        """Return timm's preprocessing configuration for this backbone."""
         return timm.data.resolve_model_data_config(self.model)
 
     def set_grad_checkpointing(self, enable=True):
+        """Retain the training-script interface for manually executed blocks."""
         # This model executes blocks manually to collect MoE aux losses.
         # Keep this method for compatibility with existing train scripts.
         return None
 
     def _level_ids(self, levels, batch_size, device):
+        """Resolve user-facing levels to integer identifiers."""
         if levels is None:
             level_id = self.level_to_id[self.default_level]
             return torch.full((batch_size,), level_id, dtype=torch.long, device=device)
@@ -586,6 +610,7 @@ class LevelMoEFFNTimmModel(nn.Module):
         return torch.tensor(mapped, dtype=torch.long, device=device)
 
     def _level_values(self, levels, batch_size, device):
+        """Resolve levels to continuous values used by half-level inference."""
         if levels is None:
             value = _level_value_from_name(self.default_level)
             return torch.full((batch_size,), value, dtype=torch.float32, device=device)
@@ -622,6 +647,7 @@ class LevelMoEFFNTimmModel(nn.Module):
         return torch.tensor(values, dtype=torch.float32, device=device)
 
     def _router_condition_features(self, levels, batch_size, device):
+        """Build bounded polynomial/Fourier scale features for the router."""
         if self.router_condition_mode == "none":
             return None
         level_values = self._level_values(levels, batch_size, device)
@@ -639,6 +665,7 @@ class LevelMoEFFNTimmModel(nn.Module):
         )
 
     def _private_expert_weights(self, level_values):
+        """Linearly interpolate adjacent private experts for continuous scales."""
         anchors = self.level_value_lut.to(device=level_values.device)
         values = torch.maximum(torch.minimum(level_values, anchors[-1]), anchors[0])
         upper = torch.bucketize(values, anchors, right=False)
@@ -653,6 +680,7 @@ class LevelMoEFFNTimmModel(nn.Module):
         return weights
 
     def encode(self, img, levels=None, return_moe_loss=False):
+        """Encode images while accumulating late-block MoE diagnostics."""
         router_condition = self._router_condition_features(levels, img.shape[0], img.device)
         private_weights = None
         if self.expert_layout == "shared_level_private":
@@ -692,6 +720,7 @@ class LevelMoEFFNTimmModel(nn.Module):
         return x
 
     def forward(self, img1, img2=None, levels=None, return_moe_loss=False):
+        """Encode one batch or an aligned pair with shared level assignments."""
         if img2 is not None:
             if return_moe_loss:
                 image_features1, aux1 = self.encode(img1, levels=levels, return_moe_loss=True)

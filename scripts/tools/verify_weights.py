@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 def sha256(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
+    """Return a streaming SHA-256 digest for a potentially large checkpoint."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         while chunk := handle.read(chunk_size):
@@ -18,6 +19,7 @@ def sha256(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
 
 
 def main() -> int:
+    """Validate manifest sizes and hashes; return non-zero on any mismatch."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--weights", type=Path, default=Path("weights"))
     args = parser.parse_args()

@@ -59,6 +59,7 @@ LEVELS = ("L1", "L2", "L3")
 
 
 def _level_quota(batch_size, levels=LEVELS):
+    """Split a global batch as evenly as possible across hierarchy levels."""
     base = int(batch_size) // len(levels)
     remainder = int(batch_size) % len(levels)
     return {
@@ -74,6 +75,8 @@ DEFAULT_CKPTS = {
 
 @dataclass
 class Configuration:
+    """Complete set of reproducible VIGOR-M training defaults."""
+
     model: str = "vit_base_patch14_dinov2.lvd142m"
     img_size: int = 384
     moe_start_block: int = 11
@@ -149,21 +152,27 @@ class Configuration:
     cudnn_deterministic: bool = False
 
     def __post_init__(self):
+        """Populate level-specific initialization weights when omitted."""
         if self.level_ckpts is None:
             self.level_ckpts = dict(DEFAULT_CKPTS)
 
 
 class AverageMeter:
+    """Track a sample-weighted running scalar average."""
+
     def __init__(self):
+        """Create an empty meter."""
         self.reset()
 
     def reset(self):
+        """Clear all accumulated values."""
         self.val = 0.0
         self.avg = 0.0
         self.sum = 0.0
         self.count = 0
 
     def update(self, val, n=1):
+        """Add a value representing ``n`` samples."""
         self.val = val
         self.sum += val * n
         self.count += n
@@ -174,16 +183,19 @@ class DistributedInfoNCE(torch.nn.Module):
     """Plain InfoNCE over the full DDP batch, without level grouping."""
 
     def __init__(self, loss_function, distributed=False):
+        """Wrap a classification loss for optional distributed negatives."""
         super().__init__()
         self.loss_function = loss_function
         self.distributed = distributed
 
     def _gather_features(self, tensor):
+        """Gather differentiable feature tensors from every DDP rank."""
         if not self.distributed or not dist.is_available() or not dist.is_initialized():
             return tensor
         return torch.cat(all_gather_with_grad(tensor), dim=0)
 
     def forward(self, image_features1, image_features2, logit_scale, _level_ids=None):
+        """Compute symmetric query-to-reference and reference-to-query loss."""
         image_features1 = torch.nn.functional.normalize(image_features1, dim=-1)
         image_features2 = torch.nn.functional.normalize(image_features2, dim=-1)
 
@@ -205,30 +217,36 @@ class DistributedInfoNCE(torch.nn.Module):
 
 
 def parse_levels(value):
+    """Parse a comma-separated hierarchy level list."""
     if value is None:
         return None
     return tuple(part.strip().upper() for part in value.split(",") if part.strip())
 
 
 def parse_gpu_ids(value):
+    """Parse a comma-separated CUDA device list."""
     return tuple(int(part.strip()) for part in value.split(",") if part.strip())
 
 
 def stride_for_level(config, level):
+    """Return the dense satellite stride configured for one level."""
     return config.l1_stride_fraction if level == "L1" and level in set(config.dense_levels) else None
 
 
 def get_logit_scale(model):
+    """Read the positive contrastive temperature from plain or DDP models."""
     return model.module.logit_scale.exp() if hasattr(model, "module") else model.logit_scale.exp()
 
 
 def strip_module(state):
+    """Unwrap common checkpoint containers and remove DDP key prefixes."""
     if isinstance(state, dict) and "state_dict" in state:
         state = state["state_dict"]
     return {key.replace("module.", ""): value for key, value in state.items()}
 
 
 def load_torch_checkpoint(path):
+    """Load old and new PyTorch checkpoint formats on CPU."""
     try:
         return torch.load(path, map_location="cpu", weights_only=False)
     except TypeError:
@@ -236,22 +254,26 @@ def load_torch_checkpoint(path):
 
 
 def checkpoint_model_state(payload):
+    """Extract model parameters from a full-state or weights-only checkpoint."""
     if isinstance(payload, dict) and "model" in payload:
         return payload["model"]
     return payload
 
 
 def load_level_ckpt(path):
+    """Load one required single-level initialization checkpoint."""
     if not path or not os.path.exists(path):
         raise FileNotFoundError(path)
     return strip_module(load_torch_checkpoint(path))
 
 
 def mean_tensors(tensors):
+    """Average compatible checkpoint tensors without changing output dtype."""
     return torch.stack([tensor.to(torch.float32) for tensor in tensors], dim=0).mean(dim=0).to(tensors[0].dtype)
 
 
 def init_moe_ffn_model_from_level_ckpts(model, config, rank=0):
+    """Map single-level FFNs into experts and initialize shared parameters."""
     level_states = {level: load_level_ckpt(config.level_ckpts[level]) for level in config.data_levels}
     target = model.state_dict()
     new_state = {}
@@ -448,14 +470,17 @@ class VigorMAllInDatasetTrain(Dataset):
         self._shared_samples.copy_(encoded)
 
     def _batch_quota(self, batch_size):
+        """Return the target per-level composition of one global batch."""
         return _level_quota(batch_size, self.data_levels)
 
     def _is_false_negative(self, ground_idx, label):
+        """Check whether a ground image is valid for another tile label."""
         if not self.strict_cell_conflict:
             return False
         return self.ground_l3_cell.get(int(ground_idx)) == self.idx2label_l3_cell.get(int(label))
 
     def _can_add_sample(self, sample, used_ground, used_labels, used_ground_cells, used_label_cells, batch):
+        """Test strict identity and spatial-cell constraints for a batch slot."""
         ground_idx, label, _level = sample
         if ground_idx in used_ground or label in used_labels:
             return False
@@ -480,6 +505,7 @@ class VigorMAllInDatasetTrain(Dataset):
         return True
 
     def _mark_sample(self, sample, used_ground, used_labels, used_ground_cells, used_label_cells):
+        """Update conflict sets after accepting a sample."""
         ground_idx, label, _level = sample
         used_ground.add(int(ground_idx))
         used_labels.add(int(label))
@@ -491,6 +517,7 @@ class VigorMAllInDatasetTrain(Dataset):
             used_label_cells.add(label_cell)
 
     def shuffle(self, sim_dict=None, neighbour_select=64, neighbour_range=128, target_steps=None, max_retries=1):
+        """Build balanced batches while excluding known false negatives."""
         best_samples = None
         best_dropped_tail = None
         best_steps = -1
@@ -554,6 +581,7 @@ class VigorMAllInDatasetTrain(Dataset):
         attempts,
         target_steps,
     ):
+        """Report shuffle coverage and retry diagnostics."""
         print("\nShuffle VigorMAllInDatasetTrain:")
         print(f"  Length after shuffle: {len(self.samples)}")
         print(f"  Batches: {len(self.samples) // self.shuffle_batch_size}")
@@ -565,6 +593,7 @@ class VigorMAllInDatasetTrain(Dataset):
             print(f"  Hard sample mining: neighbour_select={neighbour_select} neighbour_range={neighbour_range}")
 
     def _build_shuffle_once(self, sim_dict=None, neighbour_select=64, neighbour_range=128, target_steps=None):
+        """Construct one candidate epoch layout before DDP partitioning."""
         by_level_labels = {
             level: sorted(
                 int(label)
@@ -735,6 +764,7 @@ class VigorMAllInDatasetTrain(Dataset):
         return samples_out, dropped_tail, global_quota
 
     def __getitem__(self, index):
+        """Load and augment one paired panorama/tile sample."""
         if self._shared_samples is None:
             global_ground, global_label, level = self.samples[index]
         else:
@@ -772,10 +802,12 @@ class VigorMAllInDatasetTrain(Dataset):
         return query_img, reference_img, label, level_id
 
     def __len__(self):
+        """Return the number of samples in the current shuffled epoch."""
         return len(self.samples)
 
 
 def summarize_level_batch(samples, global_batch_size, levels=LEVELS):
+    """Summarize level balance and duplicate conflicts per global batch."""
     rows = []
     for start in range(0, len(samples), global_batch_size):
         batch = samples[start:start + global_batch_size]
@@ -804,6 +836,7 @@ def validate_ddp_shuffle_samples(
     expected_steps=None,
     context="shuffle",
 ):
+    """Validate divisibility, balance, and false-negative guards before DDP."""
     global_batch_size = local_batch_size * world_size
     if len(train_ds.samples) % global_batch_size != 0:
         raise RuntimeError(
@@ -890,6 +923,7 @@ def validate_ddp_shuffle_samples(
 
 
 def layout_samples_for_ddp(samples, local_batch_size, world_size, levels=LEVELS):
+    """Interleave global batches so each DDP rank receives its local slice."""
     global_batch_size = local_batch_size * world_size
     local_quota = _level_quota(local_batch_size, levels)
 
@@ -928,6 +962,7 @@ def layout_samples_for_ddp(samples, local_batch_size, world_size, levels=LEVELS)
 
 
 def shuffle_layout_and_validate(config, train_ds, sim_dict, world_size, expected_steps=None, context="shuffle"):
+    """Shuffle, DDP-layout, and validate an epoch atomically."""
     target_steps = expected_steps if expected_steps is not None else train_ds.steps_per_epoch
     train_ds.shuffle(
         sim_dict,
@@ -959,6 +994,7 @@ def shuffle_layout_and_validate(config, train_ds, sim_dict, world_size, expected
 
 
 def sync_samples(train_ds, rank):
+    """Broadcast the rank-zero sample layout to all training processes."""
     payload = [train_ds.samples if rank == 0 else None]
     dist.broadcast_object_list(payload, src=0)
     if rank != 0:
@@ -968,12 +1004,14 @@ def sync_samples(train_ds, rank):
 
 
 def sync_sim_dict(sim_dict, rank):
+    """Broadcast hard-negative neighbors computed on rank zero."""
     payload = [sim_dict if rank == 0 else None]
     dist.broadcast_object_list(payload, src=0)
     return payload[0]
 
 
 def capture_rng_state():
+    """Capture Python, NumPy, CPU, and CUDA RNG state for exact resumption."""
     return {
         "python": random.getstate(),
         "numpy": np.random.get_state(),
@@ -983,6 +1021,7 @@ def capture_rng_state():
 
 
 def restore_rng_state(state):
+    """Restore all available RNG streams from a full-state checkpoint."""
     if not state:
         return
     random.setstate(state["python"])
@@ -1004,6 +1043,7 @@ def save_training_state(
     sim_dict,
     config,
 ):
+    """Atomically save model, optimizer, scheduler, scaler, and RNG state."""
     state = {
         "format_version": 1,
         "epoch": int(epoch),
@@ -1023,6 +1063,7 @@ def save_training_state(
 
 
 def dataloader_kwargs(config, batch_size, sampler=None, shuffle=False, train=False):
+    """Build consistent DataLoader options for train and evaluation."""
     kwargs = dict(
         batch_size=batch_size,
         shuffle=shuffle if sampler is None else False,
@@ -1041,6 +1082,7 @@ def dataloader_kwargs(config, batch_size, sampler=None, shuffle=False, train=Fal
 
 
 def dist_predict(config, model, dataloader, level, rank, world_size):
+    """Extract normalized features and restore global dataset order in DDP."""
     model.eval()
     local_feats, local_labels = [], []
 
@@ -1100,6 +1142,7 @@ def dist_predict(config, model, dataloader, level, rank, world_size):
 
 
 def dist_evaluate(config, model, ref_loader, qry_loader, level, rank, world_size, ranks=(1, 5, 10)):
+    """Evaluate one hierarchy level using globally gathered features."""
     ref_feats, ref_labels = dist_predict(config, model, ref_loader, level, rank, world_size)
     qry_feats, qry_labels = dist_predict(config, model, qry_loader, level, rank, world_size)
     if rank != 0:
@@ -1110,6 +1153,7 @@ def dist_evaluate(config, model, ref_loader, qry_loader, level, rank, world_size
 
 
 def evaluate_all_levels(config, model, eval_loaders, rank, world_size):
+    """Run validation for every configured hierarchy level."""
     scores = {}
     for level, (ref_loader, qry_loader) in eval_loaders.items():
         if rank == 0:
@@ -1129,6 +1173,7 @@ def evaluate_all_levels(config, model, eval_loaders, rank, world_size):
 
 
 def calc_ref_sim(config, model, ref_loaders, level_offsets, rank, world_size):
+    """Build within-level nearest-neighbor graphs for hard-negative sampling."""
     if not ref_loaders:
         return None
     sim_dict = {}
@@ -1153,6 +1198,7 @@ def calc_ref_sim(config, model, ref_loaders, level_offsets, rank, world_size):
 
 
 def train_epoch(config, model, loader, loss_fn, optimizer, scheduler, scaler, epoch, rank, gpu):
+    """Train one mixed-level epoch and return loss/router statistics."""
     model.train()
     losses = AverageMeter()
     info_losses = AverageMeter()
@@ -1225,6 +1271,7 @@ def train_epoch(config, model, loader, loss_fn, optimizer, scheduler, scaler, ep
 
 
 def build_model(config, rank):
+    """Construct GeoMoE and apply the requested initialization mode."""
     resume_state = None
     model = LevelMoEFFNTimmModel(
         config.model,
@@ -1260,6 +1307,7 @@ def build_model(config, rank):
 
 
 def build_train_dataset_for_shuffle(config, transforms_query=None, transforms_reference=None):
+    """Build the mixed-level dataset used to create epoch sample layouts."""
     return VigorMAllInDatasetTrain(
         config,
         transforms_query=transforms_query,
@@ -1269,6 +1317,7 @@ def build_train_dataset_for_shuffle(config, transforms_query=None, transforms_re
 
 
 def build_label_cycle_sim_dict(train_ds, reverse=False):
+    """Create a deterministic neighbor graph for shuffle smoke tests."""
     sim_dict = {}
     for level in train_ds.data_levels:
         labels = sorted(
@@ -1294,6 +1343,7 @@ def build_label_cycle_sim_dict(train_ds, reverse=False):
 
 
 def build_levelwise_gps_sim_dict(config, train_ds):
+    """Build GPS-neighbor graphs independently within every hierarchy level."""
     sim_dict = {}
     for level in train_ds.data_levels:
         labels = [
@@ -1312,6 +1362,7 @@ def build_levelwise_gps_sim_dict(config, train_ds):
 
 
 def smoke_shuffle(config):
+    """Stress-test sampler invariants without starting model training."""
     world_size = len(config.gpu_ids)
     logical_batch_size = config.batch_size * world_size
     print(
@@ -1354,6 +1405,7 @@ def smoke_shuffle(config):
 
 
 def run(rank, world_size, config, gpu_ids):
+    """Run one DDP worker, including resume, training, evaluation, and saves."""
     gpu = gpu_ids[rank]
     os.environ["OMP_NUM_THREADS"] = "1"
     os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -1691,6 +1743,7 @@ def run(rank, world_size, config, gpu_ids):
 
 
 def parse_args():
+    """Parse the VIGOR-M training command line."""
     parser = argparse.ArgumentParser(description="Train VIGOR-M MoE-FFN L1/L2/L3 model with DDP.")
     parser.add_argument("--download-pretrained-only", action="store_true")
     parser.add_argument("--data-levels", default=None)
@@ -1749,6 +1802,7 @@ def parse_args():
 
 
 def apply_args(config, args):
+    """Apply explicit command-line overrides to a configuration instance."""
     if args.data_levels is not None:
         config.data_levels = parse_levels(args.data_levels)
         config.eval_levels = config.data_levels
@@ -1847,6 +1901,7 @@ def apply_args(config, args):
 
 
 def main():
+    """Validate devices and launch the configured training workers."""
     args = parse_args()
     config = Configuration()
     apply_args(config, args)

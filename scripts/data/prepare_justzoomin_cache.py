@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+"""Pre-render reusable JustZoomIn satellite crops for selected levels/splits."""
+
 import sys
 from pathlib import Path
 
@@ -20,6 +23,7 @@ from geomoe.datasets.justzoomin import (
 
 
 def parse_args():
+    """Parse cache geometry, source splits, and overwrite policy."""
     parser = argparse.ArgumentParser(
         description="Pre-generate JustZoomIn satellite reference crops."
     )
@@ -40,6 +44,7 @@ def parse_args():
 
 
 def build_dataset(args, level, split):
+    """Construct the reference-only dataset that defines cache tile geometry."""
     level_cfg = resolve_justzoomin_level(level)
     cache_dir = Path(args.cache_dir) if args.cache_dir else default_satellite_cache_dir(args.data_folder)
     return JustZoomInDatasetEval(
@@ -57,6 +62,7 @@ def build_dataset(args, level, split):
 
 
 def write_cache(args, level):
+    """Write every unique reference crop for one level plus provenance metadata."""
     datasets = [build_dataset(args, level, split) for split in args.splits]
     ds = datasets[0]
     cache_path = ds.satellite_cache_path
@@ -79,6 +85,8 @@ def write_cache(args, level):
     skipped = 0
     start = time.perf_counter()
 
+    # Train and validation can reference the same crop; write each physical
+    # tile once while still recording both source splits in metadata.
     seen_tile_ids = set()
     for dataset in datasets:
         for idx in sorted(dataset.idx2tile):
@@ -123,6 +131,7 @@ def write_cache(args, level):
 
 
 def main():
+    """Generate each requested level cache sequentially."""
     args = parse_args()
     for level in args.levels:
         write_cache(args, level)
