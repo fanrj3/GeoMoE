@@ -12,8 +12,8 @@ coarse-to-fine beam search avoids exhaustive scoring at fine resolution. A small
 path residual calibrator (PRC), trained only on the official training split,
 reranks the final beam without test-time label adaptation.
 
-<!-- Replace this comment with: ![GeoMoE overview](assets/teaser.png) -->
-> **Figure slot:** paper teaser and qualitative overview (`assets/teaser.png`).
+![GeoMoE overview](assets/teaser.png)
+<!-- > **Figure slot:** paper teaser and qualitative overview (`assets/teaser.png`). -->
 
 ## Highlights
 
@@ -46,20 +46,30 @@ PRC is fitted on the official training split only.
 The exhaustive JustZoomIn L4 diagnostic reaches 82.0939% R@1, but scores all
 12,029 fine references. It is not the Beam + PRC result above.
 
-## Method at a Glance
+## Method Overview
 
-```text
-ground query -> shared DINOv2 blocks 0..10 -> routed B11 FFN -> normalized query
-                                                              |
-dense coarse gallery -> top K L1 -> top K L2 -> fine candidates -> PRC -> location
-```
+GeoMoE uses one shared dual encoder for ground and satellite images at every
+geographic scale. DINOv2 blocks B0-B10 remain fully shared, while the FFN in
+B11 is replaced by five experts with sparse Top-2 routing. During training,
+level-wise InfoNCE forms negatives only among samples from the same scale.
 
-The block index is zero-based: **B11 means only the final ViT block is routed**.
-VIGOR-M trains L1-L3 and densifies L1 at stride 0.25. JustZoomIn trains L1-L4
-and densifies L1/L2 at the same stride. Both use five experts and Top-2 routing.
+| Dataset | Retrieval hierarchy | Dense galleries |
+|:--|:--|:--|
+| VIGOR-M | L1 -> L2 -> L3 | L1, stride 0.25 |
+| JustZoomIn | L1 -> L2 -> L3 -> L4 | L1 and L2, stride 0.25 |
 
-<!-- Replace this comment with: ![Hierarchical search](assets/hierarchical_search.png) -->
-> **Figure slot:** dense-root K=4 search and PRC (`assets/hierarchical_search.png`).
+At inference, the query is encoded once and matched against the coarsest dense
+gallery using cosine similarity. The top K=4 nodes are expanded to their
+children, whose temperature-scaled log-probabilities are added to the parent
+path scores. This expand-score-prune step continues to the finest level. A
+train-only path residual calibrator (PRC) then reranks the final candidates from
+their path scores, cosine similarities, ranks, margins, and entropies.
+
+Block indices are zero-based, so **B11 routes only the final Transformer FFN**.
+
+<!-- Add the final paper figure here when available:
+![Hierarchical GeoMoE retrieval](assets/hierarchical_search.png)
+-->
 
 ## Installation
 
