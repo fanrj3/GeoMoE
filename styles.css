@@ -271,14 +271,13 @@ button {
 }
 
 .affiliations {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px 22px;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
   max-width: 980px;
   margin: 12px auto 0;
   color: var(--ink-soft);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -488,16 +487,16 @@ button {
 
 .geo-sticky {
   position: sticky;
+  isolation: isolate;
   top: var(--header-height);
   height: calc(100vh - var(--header-height));
   min-height: 620px;
   overflow: hidden;
-  background: #07110f;
+  background: #07110f url("assets/map-zoom/seattle-l0.webp") center / cover no-repeat;
   color: #f4f7f5;
 }
 
-.geo-map-layers,
-.geo-map-layer,
+.geo-map-canvas,
 .geo-map-wash {
   position: absolute;
   inset: 0;
@@ -505,22 +504,31 @@ button {
   height: 100%;
 }
 
-.geo-map-layer {
+.geo-map-canvas {
+  z-index: 0;
   opacity: 0;
-  object-fit: cover;
-  filter: saturate(0.72) contrast(1.08) brightness(0.72);
-  transform: matrix(1, 0, 0, 1, 0, 0);
-  transform-origin: 0 0;
-  will-change: opacity, transform;
 }
 
-.geo-map-layer.is-active {
+.geo-map-canvas.is-ready {
   opacity: 1;
+}
+
+.geo-map-layers {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.geo-map-layer {
+  display: none;
 }
 
 .geo-map-wash {
   z-index: 1;
-  background: rgba(4, 15, 13, 0.52);
+  background: rgba(4, 15, 13, 0.6);
 }
 
 .geo-axis {
@@ -650,10 +658,14 @@ button {
 }
 
 .geo-bottom {
+  position: relative;
   display: flex;
+  min-height: 54px;
   align-items: end;
   justify-content: space-between;
   gap: 40px;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 .geo-levels {
@@ -707,7 +719,8 @@ button {
 
 .geo-stage-readout {
   display: grid;
-  min-width: 170px;
+  width: 190px;
+  min-height: 33px;
   gap: 5px;
   text-align: right;
 }
@@ -1328,8 +1341,9 @@ pre {
 
   .affiliations {
     justify-content: flex-start;
+    justify-items: start;
     margin-top: 13px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .authors {
