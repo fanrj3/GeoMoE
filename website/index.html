@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f8faf7">
+    <meta
+      name="description"
+      content="GeoMoE is a sparse mixture-of-experts model for efficient hierarchical cross-view geo-localization across geographic scales."
+    >
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="GeoMoE | One Query, Many Scales">
+    <meta
+      property="og:description"
+      content="Sparse mixture-of-experts for efficient hierarchical cross-view geo-localization."
+    >
+    <meta property="og:url" content="https://fanrj3.github.io/GeoMoE/">
+    <meta name="twitter:card" content="summary_large_image">
+    <title>GeoMoE | One Query, Many Scales</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+
+    <header class="site-header">
+      <nav class="nav-shell" aria-label="Primary navigation">
+        <a class="wordmark" href="#top" aria-label="GeoMoE home">
+          <span class="wordmark-mark" aria-hidden="true">G</span>
+          <span>GeoMoE</span>
+        </a>
+
+        <button
+          class="menu-button"
+          type="button"
+          aria-expanded="false"
+          aria-controls="site-navigation"
+          aria-label="Open navigation"
+        >
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+
+        <div class="nav-links" id="site-navigation">
+          <a href="#overview">Overview</a>
+          <a href="#method">Method</a>
+          <a href="#results">Results</a>
+          <a href="#dataset">VIGOR-M</a>
+          <a href="#citation">Citation</a>
+          <a class="nav-code" href="https://github.com/fanrj3/GeoMoE">View code</a>
+        </div>
+      </nav>
+    </header>
+
+    <main id="main-content">
+      <section class="hero" id="top" aria-labelledby="hero-title">
+        <div class="shell hero-copy">
+          <p class="eyebrow"><span>arXiv 2026</span> Cross-view geo-localization</p>
+          <h1 id="hero-title">GeoMoE</h1>
+          <p class="paper-title">
+            One Query, Many Scales: Sparse Mixture-of-Experts for Efficient
+            Hierarchical Cross-View Geo-Localization
+          </p>
+
+          <div class="authors" aria-label="Authors">
+            <span>Ruijie Fan</span>
+            <span>Junyan Ye</span>
+            <span>Qi Zhu</span>
+            <span>Weijia Li</span>
+          </div>
+
+          <div class="resource-links" aria-label="Project resources">
+            <a class="resource-link resource-primary" href="https://arxiv.org/pdf/2608.01060">
+              <span class="resource-icon" aria-hidden="true">PDF</span>
+              Paper
+            </a>
+            <a class="resource-link" href="https://github.com/fanrj3/GeoMoE">
+              <span class="resource-icon" aria-hidden="true">&lt;/&gt;</span>
+              Code
+            </a>
+            <a class="resource-link" href="https://huggingface.co/datasets/Frank0666/VIGOR-M">
+              <span class="resource-icon" aria-hidden="true">HF</span>
+              Dataset
+            </a>
+            <a class="resource-link" href="https://huggingface.co/Frank0666/GeoMoE">
+              <span class="resource-icon" aria-hidden="true">HF</span>
+              Weights
+            </a>
+          </div>
+        </div>
+
+        <div class="shell hero-figure-wrap">
+          <figure class="paper-figure hero-figure">
+            <img
+              src="assets/experiment.svg"
+              alt="GeoMoE overview showing cross-view retrieval across multiple geographic scales"
+              width="3702"
+              height="1611"
+            >
+          </figure>
+        </div>
+      </section>
+
+      <section class="metric-strip" aria-label="Headline results">
+        <div class="shell metric-grid">
+          <div class="metric">
+            <strong>62.39<span>%</span></strong>
+            <p>R@1 on VIGOR-M</p>
+          </div>
+          <div class="metric metric-accent">
+            <strong>95.78<span>%</span></strong>
+            <p>R@40m on JustZoomIn</p>
+          </div>
+          <div class="metric">
+            <strong>5.27<span>%</span></strong>
+            <p>of exhaustive L3 matching cost</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="overview" aria-labelledby="overview-title">
+        <div class="shell editorial-grid">
+          <div class="section-heading">
+            <p class="section-index">01 / Overview</p>
+            <h2 id="overview-title">Global embeddings.<br>Local search.</h2>
+          </div>
+          <div class="abstract-copy">
+            <p class="lead">
+              GeoMoE decouples multi-scale representation learning from
+              hierarchical retrieval, so one query descriptor can travel from a
+              city-scale gallery to the finest satellite tiles.
+            </p>
+            <p>
+              Cross-view geo-localization matches a ground query to geo-tagged
+              satellite imagery. GeoMoE replaces fixed-resolution exhaustive
+              search with a shared DINOv2 dual encoder trained across scales and
+              a sparse Top-2 mixture of experts. At inference, every image is
+              encoded once; a probabilistic K=4 beam follows parent-child links
+              and scores only a compact candidate set. A calibrator trained on
+              the official training split reranks final paths without test-time
+              label adaptation.
+            </p>
+            <div class="abstract-note">
+              <span>Core idea</span>
+              <p>
+                Learn descriptors that remain comparable everywhere, then use
+                hierarchy only to decide where to spend the search budget.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section-ink" id="method" aria-labelledby="method-title">
+        <div class="shell">
+          <div class="section-heading section-heading-wide">
+            <div>
+              <p class="section-index">02 / Method</p>
+              <h2 id="method-title">One encoder across every scale.</h2>
+            </div>
+            <p class="section-summary">
+              A shared backbone learns a globally comparable space; sparse
+              routing and coarse-to-fine search allocate capacity only where it
+              matters.
+            </p>
+          </div>
+
+          <figure class="paper-figure method-figure">
+            <img
+              src="assets/pipeline.svg"
+              alt="GeoMoE architecture, multi-scale training, sparse expert routing, and hierarchical retrieval pipeline"
+              width="4695"
+              height="2005"
+              loading="lazy"
+            >
+          </figure>
+
+          <div class="method-steps">
+            <article>
+              <span class="step-number">01</span>
+              <h3>Align scales globally</h3>
+              <p>
+                Level-wise InfoNCE trains one dual encoder while keeping
+                negatives within the same physical scale.
+              </p>
+            </article>
+            <article>
+              <span class="step-number">02</span>
+              <h3>Route content sparsely</h3>
+              <p>
+                The final Transformer FFN routes each token through the best two
+                of five learned experts.
+              </p>
+            </article>
+            <article>
+              <span class="step-number">03</span>
+              <h3>Search coarse to fine</h3>
+              <p>
+                A K=4 probabilistic beam expands parent-child paths before a
+                train-only residual calibrator reranks the finalists.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="results" aria-labelledby="results-title">
+        <div class="shell">
+          <div class="section-heading section-heading-wide">
+            <div>
+              <p class="section-index">03 / Results</p>
+              <h2 id="results-title">Accurate without exhaustive search.</h2>
+            </div>
+            <p class="section-summary">
+              Released B11/E5 Top-2 checkpoint, fixed K=4 beam, and PRC fitted
+              only on the official training split.
+            </p>
+          </div>
+
+          <div class="result-tables">
+            <article class="result-block">
+              <div class="result-title">
+                <div>
+                  <p>New benchmark</p>
+                  <h3>VIGOR-M</h3>
+                </div>
+                <strong>37,789 <span>queries</span></strong>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">R@1</th>
+                      <th scope="col">R@100m</th>
+                      <th scope="col">R@200m</th>
+                      <th scope="col">R@300m</th>
+                      <th scope="col">Median</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>62.39%</td>
+                      <td>77.82%</td>
+                      <td>84.30%</td>
+                      <td>86.86%</td>
+                      <td>52.33 m</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="result-block">
+              <div class="result-title">
+                <div>
+                  <p>Large-area benchmark</p>
+                  <h3>JustZoomIn</h3>
+                </div>
+                <strong>30,956 <span>queries</span></strong>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">R@1</th>
+                      <th scope="col">R@40m</th>
+                      <th scope="col">R@50m</th>
+                      <th scope="col">R@100m</th>
+                      <th scope="col">Median</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>81.71%</td>
+                      <td>95.78%</td>
+                      <td>96.32%</td>
+                      <td>97.68%</td>
+                      <td>16.43 m</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+
+          <figure class="paper-figure efficiency-figure">
+            <img
+              src="assets/flag.svg"
+              alt="Accuracy and search efficiency comparisons for GeoMoE on VIGOR-M and JustZoomIn"
+              width="4114"
+              height="1952"
+              loading="lazy"
+            >
+          </figure>
+        </div>
+      </section>
+
+      <section class="section dataset-section" id="dataset" aria-labelledby="dataset-title">
+        <div class="shell">
+          <div class="dataset-intro">
+            <div class="section-heading">
+              <p class="section-index">04 / Dataset</p>
+              <h2 id="dataset-title">VIGOR-M</h2>
+            </div>
+            <div class="dataset-copy">
+              <p class="lead">
+                A four-city benchmark built for single-resolution,
+                cross-resolution, and hierarchical geo-localization.
+              </p>
+              <p>
+                VIGOR-M adds an explicit parent-child satellite hierarchy and
+                held-out half-step galleries, making resolution transfer a
+                measurable capability rather than an incidental side effect.
+              </p>
+              <a class="text-link" href="https://huggingface.co/datasets/Frank0666/VIGOR-M">
+                Explore the dataset
+              </a>
+            </div>
+          </div>
+
+          <div class="dataset-facts" aria-label="VIGOR-M statistics">
+            <div><strong>4</strong><span>cities</span></div>
+            <div><strong>75,684</strong><span>panoramas</span></div>
+            <div><strong>17,472</strong><span>native tiles</span></div>
+            <div><strong>3</strong><span>evaluation protocols</span></div>
+          </div>
+
+          <figure class="paper-figure dataset-figure">
+            <img
+              src="assets/vigormdataset.svg"
+              alt="VIGOR-M dataset composition across New York, Seattle, San Francisco, and Chicago with multi-resolution satellite hierarchies"
+              width="5154"
+              height="4046"
+              loading="lazy"
+            >
+          </figure>
+        </div>
+      </section>
+
+      <section class="section citation-section" id="citation" aria-labelledby="citation-title">
+        <div class="shell citation-grid">
+          <div class="section-heading">
+            <p class="section-index">05 / Citation</p>
+            <h2 id="citation-title">Build on GeoMoE.</h2>
+            <p class="citation-note">
+              Code is released under Apache-2.0. Dataset licenses and
+              third-party notices remain separate.
+            </p>
+          </div>
+          <div class="bibtex-wrap">
+            <div class="bibtex-toolbar">
+              <span>BibTeX</span>
+              <button class="copy-button" type="button" data-copy-bibtex>Copy BibTeX</button>
+            </div>
+            <pre id="bibtex"><code>@article{fan2026geomoe,
+  title   = {One Query, Many Scales: Sparse Mixture-of-Experts for
+             Efficient Hierarchical Cross-View Geo-Localization},
+  author  = {Fan, Ruijie and Ye, Junyan and Zhu, Qi and Li, Weijia},
+  journal = {arXiv preprint arXiv:2608.01060},
+  year    = {2026}
+}</code></pre>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell footer-grid">
+        <div>
+          <a class="footer-wordmark" href="#top">GeoMoE</a>
+          <p>One query, many scales.</p>
+        </div>
+        <div class="footer-links">
+          <a href="https://arxiv.org/pdf/2608.01060">Paper</a>
+          <a href="https://github.com/fanrj3/GeoMoE">Code</a>
+          <a href="https://huggingface.co/datasets/Frank0666/VIGOR-M">Dataset</a>
+          <a href="https://huggingface.co/Frank0666/GeoMoE">Weights</a>
+        </div>
+        <p class="footer-meta">Research project page · 2026</p>
+      </div>
+    </footer>
+  </body>
+</html>

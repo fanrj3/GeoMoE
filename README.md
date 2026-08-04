@@ -5,6 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1%2B-EE4C2C.svg)](https://pytorch.org/)
 [![arXiv](https://img.shields.io/badge/arXiv-2608.01060-B31B1B.svg?logo=arxiv&logoColor=white)](https://arxiv.org/pdf/2608.01060)
+[![Project Page](https://img.shields.io/badge/Project-Page-147B72.svg?logo=githubpages&logoColor=white)](https://fanrj3.github.io/GeoMoE/)
 [![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Weights-FFD21E.svg?logo=huggingface&logoColor=black)](https://huggingface.co/Frank0666/GeoMoE)
 [![VIGOR-M Dataset](https://img.shields.io/badge/Hugging%20Face-VIGOR--M%20Dataset-FFD21E.svg?logo=huggingface&logoColor=black)](https://huggingface.co/datasets/Frank0666/VIGOR-M)
 [![License](https://img.shields.io/badge/License-Apache--2.0-4D7A97.svg)](LICENSE)
