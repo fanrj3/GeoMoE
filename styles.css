@@ -138,16 +138,29 @@ button {
 }
 
 .nav-links .nav-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   padding: 8px 14px;
   border: 1px solid var(--ink);
   border-radius: 4px;
   color: var(--ink);
 }
 
+.nav-code img {
+  width: 15px;
+  height: 15px;
+}
+
 .nav-links .nav-code:hover,
 .nav-links .nav-code:focus-visible {
   background: var(--ink);
   color: #fff;
+}
+
+.nav-links .nav-code:hover img,
+.nav-links .nav-code:focus-visible img {
+  filter: invert(1);
 }
 
 .menu-button {
@@ -225,11 +238,48 @@ button {
   font-weight: 650;
 }
 
-.authors span:not(:last-child)::after {
+.authors > * {
+  position: relative;
+}
+
+.authors a {
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 4px;
+  transition: color 160ms ease, text-decoration-color 160ms ease;
+}
+
+.authors a:hover,
+.authors a:focus-visible {
+  color: var(--accent);
+  text-decoration-color: currentColor;
+}
+
+.authors > *:not(:last-child)::after {
   position: absolute;
   margin-left: 13px;
   color: #aeb9b4;
   content: "\00b7";
+}
+
+.authors sup,
+.affiliations sup {
+  margin-left: 2px;
+  font-size: 0.65em;
+  line-height: 0;
+  vertical-align: super;
+}
+
+.affiliations {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 22px;
+  max-width: 980px;
+  margin: 12px auto 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .resource-links {
@@ -432,7 +482,7 @@ button {
 
 .geo-zoom {
   position: relative;
-  height: 360vh;
+  height: 420vh;
   background: #07110f;
 }
 
@@ -459,13 +509,9 @@ button {
   opacity: 0;
   object-fit: cover;
   filter: saturate(0.72) contrast(1.08) brightness(0.72);
-  transform: scale(1);
-  transform-origin: center;
+  transform: matrix(1, 0, 0, 1, 0, 0);
+  transform-origin: 0 0;
   will-change: opacity, transform;
-}
-
-.geo-map-layer:first-child {
-  transform-origin: 20% 47%;
 }
 
 .geo-map-layer.is-active {
@@ -1116,6 +1162,7 @@ pre {
   }
 
   .nav-links .nav-code {
+    justify-content: center;
     margin-top: 8px;
     padding: 9px 12px;
     text-align: center;
@@ -1138,7 +1185,7 @@ pre {
     gap: 6px 18px;
   }
 
-  .authors span:not(:last-child)::after {
+  .authors > *:not(:last-child)::after {
     margin-left: 9px;
   }
 
@@ -1151,15 +1198,11 @@ pre {
   }
 
   .geo-zoom {
-    height: 320vh;
+    height: 360vh;
   }
 
   .geo-sticky {
     min-height: 560px;
-  }
-
-  .geo-map-layer:first-child {
-    object-position: 20% center;
   }
 
   .geo-ui {
@@ -1281,6 +1324,12 @@ pre {
   .authors,
   .resource-links {
     justify-content: flex-start;
+  }
+
+  .affiliations {
+    justify-content: flex-start;
+    margin-top: 13px;
+    font-size: 11px;
   }
 
   .authors {

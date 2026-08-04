@@ -54,7 +54,10 @@
           <a href="#results">Results</a>
           <a href="#dataset">VIGOR-M</a>
           <a href="#citation">Citation</a>
-          <a class="nav-code" href="https://github.com/fanrj3/GeoMoE">View code</a>
+          <a class="nav-code" href="https://github.com/fanrj3/GeoMoE">
+            <img src="assets/icons/github.svg" alt="" width="15" height="15">
+            View code
+          </a>
         </div>
       </nav>
     </header>
@@ -70,10 +73,14 @@
           </p>
 
           <div class="authors" aria-label="Authors">
-            <span>Ruijie Fan</span>
-            <span>Junyan Ye</span>
-            <span>Qi Zhu</span>
-            <span>Weijia Li</span>
+            <a href="https://fanrj3.github.io/">Ruijie Fan<sup>1,2</sup></a>
+            <a href="https://yejy53.github.io/">Junyan Ye<sup>2</sup></a>
+            <span>Qi Zhu<sup>2</sup></span>
+            <a href="https://liweijia.github.io/">Weijia Li<sup>1</sup></a>
+          </div>
+          <div class="affiliations" aria-label="Author affiliations">
+            <span><sup>1</sup>Tsinghua Shenzhen International Graduate School, Tsinghua University</span>
+            <span><sup>2</sup>School of Geospatial Engineering and Science, Sun Yat-sen University</span>
           </div>
 
           <div class="resource-links" aria-label="Project resources">
@@ -177,6 +184,9 @@
             <img
               class="geo-map-layer is-active"
               data-map-layer
+              data-base-zoom="1"
+              data-focus-x="0.203125"
+              data-focus-y="0.46875"
               src="assets/map-zoom/seattle-l0.webp"
               alt=""
               width="1200"
@@ -187,6 +197,9 @@
             <img
               class="geo-map-layer"
               data-map-layer
+              data-base-zoom="4"
+              data-focus-x="0.5"
+              data-focus-y="0.5"
               src="assets/map-zoom/seattle-l1.webp"
               alt=""
               width="1600"
@@ -197,6 +210,9 @@
             <img
               class="geo-map-layer"
               data-map-layer
+              data-base-zoom="12"
+              data-focus-x="0.5"
+              data-focus-y="0.5"
               src="assets/map-zoom/seattle-l2.webp"
               alt=""
               width="1600"
@@ -207,6 +223,9 @@
             <img
               class="geo-map-layer"
               data-map-layer
+              data-base-zoom="32"
+              data-focus-x="0.5"
+              data-focus-y="0.5"
               src="assets/map-zoom/seattle-l3.webp"
               alt=""
               width="1536"
@@ -225,9 +244,9 @@
               <p class="section-index">02 / Geographic hierarchy</p>
               <h2 id="hierarchy-title">From city scale<br>to a single place.</h2>
               <p>
-                GeoMoE keeps one globally comparable descriptor while its beam
-                follows the satellite hierarchy. Each level narrows the search
-                area without re-encoding the query.
+                VIGOR-M preserves each city as a continuous surface served by an
+                aligned map-tile pyramid. GeoMoE follows this hierarchy while
+                keeping one globally comparable descriptor at every scale.
               </p>
             </div>
 
