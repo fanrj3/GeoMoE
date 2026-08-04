@@ -20,6 +20,10 @@
     <title>GeoMoE | One Query, Many Scales</title>
     <link rel="icon" type="image/png" sizes="512x512" href="assets/geographical.png">
     <link rel="apple-touch-icon" href="assets/geographical.png">
+    <link rel="preload" as="image" type="image/webp" href="assets/map-zoom/seattle-l0.webp">
+    <link rel="preload" as="image" type="image/webp" href="assets/map-zoom/seattle-l1.webp">
+    <link rel="preload" as="image" type="image/webp" href="assets/map-zoom/seattle-l2.webp">
+    <link rel="preload" as="image" type="image/webp" href="assets/map-zoom/seattle-l3.webp">
     <link rel="stylesheet" href="styles.css">
     <script src="script.js" defer></script>
   </head>
@@ -180,6 +184,7 @@
         aria-labelledby="hierarchy-title"
       >
         <div class="geo-sticky">
+          <canvas class="geo-map-canvas" data-map-canvas aria-hidden="true"></canvas>
           <div class="geo-map-layers" aria-hidden="true">
             <img
               class="geo-map-layer is-active"
@@ -191,8 +196,9 @@
               alt=""
               width="1200"
               height="1200"
-              loading="lazy"
+              loading="eager"
               decoding="async"
+              fetchpriority="high"
             >
             <img
               class="geo-map-layer"
@@ -204,7 +210,7 @@
               alt=""
               width="1600"
               height="1600"
-              loading="lazy"
+              loading="eager"
               decoding="async"
             >
             <img
@@ -217,7 +223,7 @@
               alt=""
               width="1600"
               height="1600"
-              loading="lazy"
+              loading="eager"
               decoding="async"
             >
             <img
@@ -230,7 +236,7 @@
               alt=""
               width="1536"
               height="1536"
-              loading="lazy"
+              loading="eager"
               decoding="async"
             >
           </div>
