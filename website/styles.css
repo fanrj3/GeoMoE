@@ -680,11 +680,32 @@ button {
 
 .geo-levels li {
   position: relative;
-  display: grid;
-  gap: 3px;
-  padding-top: 15px;
   color: #80928b;
   transition: color 180ms ease;
+}
+
+.geo-levels button {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  padding: 15px 8px 0 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.geo-levels button:hover {
+  color: #fff;
+}
+
+.geo-levels button:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid #f4b36b;
+  outline-offset: 5px;
 }
 
 .geo-levels li::before {
@@ -1245,6 +1266,10 @@ pre {
 
   .geo-levels {
     width: 100%;
+  }
+
+  .geo-levels button {
+    padding-right: 4px;
   }
 
   .geo-stage-readout {
