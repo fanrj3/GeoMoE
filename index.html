@@ -15,8 +15,11 @@
       content="Sparse mixture-of-experts for efficient hierarchical cross-view geo-localization."
     >
     <meta property="og:url" content="https://fanrj3.github.io/GeoMoE/">
-    <meta name="twitter:card" content="summary_large_image">
+    <meta property="og:image" content="https://fanrj3.github.io/GeoMoE/assets/geographical.png">
+    <meta name="twitter:card" content="summary">
     <title>GeoMoE | One Query, Many Scales</title>
+    <link rel="icon" type="image/png" sizes="512x512" href="assets/geographical.png">
+    <link rel="apple-touch-icon" href="assets/geographical.png">
     <link rel="stylesheet" href="styles.css">
     <script src="script.js" defer></script>
   </head>
@@ -26,7 +29,9 @@
     <header class="site-header">
       <nav class="nav-shell" aria-label="Primary navigation">
         <a class="wordmark" href="#top" aria-label="GeoMoE home">
-          <span class="wordmark-mark" aria-hidden="true">G</span>
+          <span class="wordmark-mark" aria-hidden="true">
+            <img src="assets/geographical.png" alt="" width="32" height="32">
+          </span>
           <span>GeoMoE</span>
         </a>
 
@@ -44,6 +49,7 @@
 
         <div class="nav-links" id="site-navigation">
           <a href="#overview">Overview</a>
+          <a href="#hierarchy">Hierarchy</a>
           <a href="#method">Method</a>
           <a href="#results">Results</a>
           <a href="#dataset">VIGOR-M</a>
@@ -72,19 +78,27 @@
 
           <div class="resource-links" aria-label="Project resources">
             <a class="resource-link resource-primary" href="https://arxiv.org/pdf/2608.01060">
-              <span class="resource-icon" aria-hidden="true">PDF</span>
+              <span class="resource-icon" aria-hidden="true">
+                <img src="assets/icons/arxiv.svg" alt="" width="20" height="20">
+              </span>
               Paper
             </a>
             <a class="resource-link" href="https://github.com/fanrj3/GeoMoE">
-              <span class="resource-icon" aria-hidden="true">&lt;/&gt;</span>
+              <span class="resource-icon" aria-hidden="true">
+                <img src="assets/icons/github.svg" alt="" width="20" height="20">
+              </span>
               Code
             </a>
             <a class="resource-link" href="https://huggingface.co/datasets/Frank0666/VIGOR-M">
-              <span class="resource-icon" aria-hidden="true">HF</span>
+              <span class="resource-icon" aria-hidden="true">
+                <img src="assets/icons/huggingface.svg" alt="" width="20" height="20">
+              </span>
               Dataset
             </a>
             <a class="resource-link" href="https://huggingface.co/Frank0666/GeoMoE">
-              <span class="resource-icon" aria-hidden="true">HF</span>
+              <span class="resource-icon" aria-hidden="true">
+                <img src="assets/icons/huggingface.svg" alt="" width="20" height="20">
+              </span>
               Weights
             </a>
           </div>
@@ -152,11 +166,100 @@
         </div>
       </section>
 
+      <section
+        class="geo-zoom"
+        id="hierarchy"
+        data-map-zoom
+        aria-labelledby="hierarchy-title"
+      >
+        <div class="geo-sticky">
+          <div class="geo-map-layers" aria-hidden="true">
+            <img
+              class="geo-map-layer is-active"
+              data-map-layer
+              src="assets/map-zoom/seattle-l0.webp"
+              alt=""
+              width="1200"
+              height="1200"
+              loading="lazy"
+              decoding="async"
+            >
+            <img
+              class="geo-map-layer"
+              data-map-layer
+              src="assets/map-zoom/seattle-l1.webp"
+              alt=""
+              width="1600"
+              height="1600"
+              loading="lazy"
+              decoding="async"
+            >
+            <img
+              class="geo-map-layer"
+              data-map-layer
+              src="assets/map-zoom/seattle-l2.webp"
+              alt=""
+              width="1600"
+              height="1600"
+              loading="lazy"
+              decoding="async"
+            >
+            <img
+              class="geo-map-layer"
+              data-map-layer
+              src="assets/map-zoom/seattle-l3.webp"
+              alt=""
+              width="1536"
+              height="1536"
+              loading="lazy"
+              decoding="async"
+            >
+          </div>
+          <div class="geo-map-wash" aria-hidden="true"></div>
+          <div class="geo-axis geo-axis-x" aria-hidden="true"></div>
+          <div class="geo-axis geo-axis-y" aria-hidden="true"></div>
+          <div class="geo-target" aria-hidden="true"><span></span></div>
+
+          <div class="shell geo-ui">
+            <div class="geo-copy">
+              <p class="section-index">02 / Geographic hierarchy</p>
+              <h2 id="hierarchy-title">From city scale<br>to a single place.</h2>
+              <p>
+                GeoMoE keeps one globally comparable descriptor while its beam
+                follows the satellite hierarchy. Each level narrows the search
+                area without re-encoding the query.
+              </p>
+            </div>
+
+            <div class="geo-readout" aria-label="Map location">
+              <span>Seattle, Washington</span>
+              <strong>47.5922 N&nbsp;&nbsp;122.3323 W</strong>
+            </div>
+
+            <div class="geo-bottom">
+              <ol class="geo-levels" aria-label="Hierarchy levels">
+                <li class="is-active" data-map-label><strong>L0</strong><span>City</span></li>
+                <li data-map-label><strong>L1</strong><span>Region</span></li>
+                <li data-map-label><strong>L2</strong><span>District</span></li>
+                <li data-map-label><strong>L3</strong><span>Local</span></li>
+              </ol>
+
+              <div class="geo-stage-readout" aria-live="polite">
+                <span data-map-stage>City gallery</span>
+                <strong data-map-resolution>49,152 px source</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="geo-progress" aria-hidden="true"><span data-map-progress></span></div>
+        </div>
+      </section>
+
       <section class="section section-ink" id="method" aria-labelledby="method-title">
         <div class="shell">
           <div class="section-heading section-heading-wide">
             <div>
-              <p class="section-index">02 / Method</p>
+              <p class="section-index">03 / Method</p>
               <h2 id="method-title">One encoder across every scale.</h2>
             </div>
             <p class="section-summary">
@@ -209,7 +312,7 @@
         <div class="shell">
           <div class="section-heading section-heading-wide">
             <div>
-              <p class="section-index">03 / Results</p>
+              <p class="section-index">04 / Results</p>
               <h2 id="results-title">Accurate without exhaustive search.</h2>
             </div>
             <p class="section-summary">
@@ -300,7 +403,7 @@
         <div class="shell">
           <div class="dataset-intro">
             <div class="section-heading">
-              <p class="section-index">04 / Dataset</p>
+              <p class="section-index">05 / Dataset</p>
               <h2 id="dataset-title">VIGOR-M</h2>
             </div>
             <div class="dataset-copy">
@@ -341,7 +444,7 @@
       <section class="section citation-section" id="citation" aria-labelledby="citation-title">
         <div class="shell citation-grid">
           <div class="section-heading">
-            <p class="section-index">05 / Citation</p>
+            <p class="section-index">06 / Citation</p>
             <h2 id="citation-title">Build on GeoMoE.</h2>
             <p class="citation-note">
               Code is released under Apache-2.0. Dataset licenses and
