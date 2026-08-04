@@ -4,6 +4,9 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1%2B-EE4C2C.svg)](https://pytorch.org/)
+[![arXiv](https://img.shields.io/badge/arXiv-2608.01060-B31B1B.svg?logo=arxiv&logoColor=white)](https://arxiv.org/pdf/2608.01060)
+[![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Weights-FFD21E.svg?logo=huggingface&logoColor=black)](https://huggingface.co/Frank0666/GeoMoE)
+[![VIGOR-M Dataset](https://img.shields.io/badge/Hugging%20Face-VIGOR--M%20Dataset-FFD21E.svg?logo=huggingface&logoColor=black)](https://huggingface.co/datasets/Frank0666/VIGOR-M)
 [![License](https://img.shields.io/badge/License-Apache--2.0-4D7A97.svg)](LICENSE)
 
 GeoMoE unifies multiple geographic scales in one DINOv2 dual encoder. Its final
@@ -12,7 +15,7 @@ coarse-to-fine beam search avoids exhaustive scoring at fine resolution. A small
 path residual calibrator (PRC), trained only on the official training split,
 reranks the final beam without test-time label adaptation.
 
-![GeoMoE overview](assets/teaser.png)
+![GeoMoE overview](assets/experiment.svg)
 <!-- > **Figure slot:** paper teaser and qualitative overview (`assets/teaser.png`). -->
 
 ## Highlights
@@ -23,8 +26,8 @@ reranks the final beam without test-time label adaptation.
 - PRC learns a residual over path probability, similarity, rank, margin, and entropy features.
 - Complete training and evaluation code is provided for VIGOR-M and JustZoomIn.
 
-<!-- Replace this comment with: ![GeoMoE framework](assets/framework.png) -->
-> **Figure slot:** model architecture, routed FFN, and training objectives (`assets/framework.png`).
+![GeoMoE framework](assets/pipeline.svg)
+<!-- > **Figure slot:** model architecture, routed FFN, and training objectives (`assets/framework.png`). -->
 
 ## Main Results
 
@@ -45,6 +48,14 @@ PRC is fitted on the official training split only.
 
 The exhaustive JustZoomIn L4 diagnostic reaches 82.0939% R@1, but scores all
 12,029 fine references. It is not the Beam + PRC result above.
+
+## Efficiency
+
+GeoMoE combines high retrieval accuracy with a compact search budget through
+coarse-to-fine beam search. The figure compares accuracy against logical search
+volume and summarizes performance across VIGOR-M resolutions.
+
+![GeoMoE efficiency](assets/flag.svg)
 
 ## Method Overview
 
