@@ -1000,50 +1000,136 @@ td {
 }
 
 .citation-section {
-  background: var(--surface);
+  border-top: 1px solid var(--rule);
+  background: #eef3ef;
 }
 
-.citation-grid {
+.citation-layout {
   display: grid;
-  grid-template-columns: 0.75fr 1.25fr;
-  gap: 80px;
+  grid-template-columns: minmax(260px, 0.72fr) minmax(0, 1.28fr);
+  gap: 88px;
   align-items: start;
 }
 
+.citation-intro h2 {
+  max-width: 320px;
+}
+
 .citation-note {
-  max-width: 350px;
-  margin-top: 24px;
+  max-width: 330px;
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid #cbd5cf;
   color: var(--ink-soft);
   font-size: 13px;
 }
 
+.citation-content {
+  min-width: 0;
+}
+
+.citation-record {
+  padding: 25px 0 28px;
+  border-top: 3px solid var(--accent);
+  border-bottom: 1px solid #cbd5cf;
+}
+
+.citation-record-label {
+  margin: 0 0 12px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.citation-record h3 {
+  max-width: 760px;
+  margin: 0;
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.32;
+}
+
+.citation-authors {
+  margin: 14px 0 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.citation-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 18px;
+  color: #687a73;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.citation-meta a {
+  color: var(--teal);
+  text-decoration: underline;
+  text-decoration-color: rgba(20, 123, 114, 0.3);
+  text-underline-offset: 3px;
+}
+
+.citation-meta a:hover,
+.citation-meta a:focus-visible {
+  color: var(--accent);
+  text-decoration-color: currentColor;
+}
+
 .bibtex-wrap {
+  margin-top: 24px;
   overflow: hidden;
-  border: 1px solid var(--rule);
-  border-radius: 5px;
-  background: #101b18;
-  color: #eaf0ed;
+  border: 1px solid #c5d0ca;
+  border-radius: 4px;
+  background: #f9fbf9;
+  color: #20312c;
 }
 
 .bibtex-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 48px;
-  padding: 0 16px;
-  border-bottom: 1px solid #30413b;
-  color: #aebdb7;
+  min-height: 52px;
+  padding: 0 14px 0 18px;
+  border-bottom: 1px solid #293a35;
+  background: #14231f;
+  color: #d8e2de;
   font-size: 11px;
   font-weight: 750;
   text-transform: uppercase;
 }
 
+.bibtex-label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.bibtex-key {
+  overflow: hidden;
+  color: #849790;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
 .copy-button {
-  padding: 6px 10px;
-  border: 1px solid #43564f;
+  min-width: 96px;
+  padding: 7px 11px;
+  border: 1px solid #52655e;
   border-radius: 3px;
   background: transparent;
-  color: #f1f5f3;
+  color: #f4f7f5;
   cursor: pointer;
   font-size: 10px;
   font-weight: 750;
@@ -1056,13 +1142,30 @@ td {
 }
 
 pre {
-  overflow-x: auto;
+  overflow: hidden;
   margin: 0;
-  padding: 24px;
+  padding: 22px 24px 24px;
+  color: #263832;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.75;
+  font-size: 11px;
+  line-height: 1.8;
   tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bib-type {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.bib-key {
+  color: var(--blue);
+}
+
+.bib-field {
+  color: var(--teal);
+  font-weight: 700;
 }
 
 .site-footer {
@@ -1296,7 +1399,7 @@ pre {
   .editorial-grid,
   .section-heading-wide,
   .dataset-intro,
-  .citation-grid {
+  .citation-layout {
     grid-template-columns: 1fr;
     gap: 38px;
   }
@@ -1449,8 +1552,25 @@ pre {
     font-size: 22px;
   }
 
-  .citation-grid {
+  .citation-layout {
     gap: 28px;
+  }
+
+  .citation-intro h2,
+  .citation-note {
+    max-width: 100%;
+  }
+
+  .citation-record {
+    padding-top: 21px;
+  }
+
+  .citation-record h3 {
+    font-size: 21px;
+  }
+
+  .bibtex-key {
+    display: none;
   }
 
   pre {
