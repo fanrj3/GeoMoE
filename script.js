@@ -68,6 +68,7 @@ const mapZoom = document.querySelector("[data-map-zoom]");
 if (mapZoom) {
   const layers = [...mapZoom.querySelectorAll("[data-map-layer]")];
   const labels = [...mapZoom.querySelectorAll("[data-map-label]")];
+  const jumpButtons = [...mapZoom.querySelectorAll("[data-map-jump]")];
   const progressBar = mapZoom.querySelector("[data-map-progress]");
   const target = mapZoom.querySelector(".geo-target");
   const horizontalAxis = mapZoom.querySelector(".geo-axis-x");
@@ -78,7 +79,7 @@ if (mapZoom) {
   const mapCanvas = mapZoom.querySelector("[data-map-canvas]");
   const mapContext = mapCanvas?.getContext("2d", { alpha: false });
   const stages = [
-    { name: "City gallery", resolution: "49,152 px source" },
+    { name: "City-scale gallery", resolution: "49,152 px source" },
     { name: "Regional candidate", resolution: "12,288 px window" },
     { name: "District candidate", resolution: "4,096 px window" },
     { name: "Local candidate", resolution: "2 x 2 L3 tiles" },
@@ -86,8 +87,9 @@ if (mapZoom) {
   const baseZooms = layers.map((layer) => Number(layer.dataset.baseZoom));
   const baseLogZooms = baseZooms.map((zoom) => Math.log2(zoom));
   const maxLogZoom = 6;
-  const transitionWidth = 0.3;
+  const transitionWidth = 0.46;
   const layerReady = new Array(layers.length).fill(false);
+  const layerSources = new Array(layers.length).fill(null);
   let frameRequested = false;
   let lastRenderSignature = "";
   let renderedStageIndex = -1;
@@ -101,23 +103,44 @@ if (mapZoom) {
     return amount * amount * (3 - 2 * amount);
   }
 
-  function markLayerReady(layer, index) {
-    const finish = () => {
-      if (!layer.naturalWidth) return;
-      layerReady[index] = true;
-      requestMapFrame();
-    };
+  const warmCanvas = document.createElement("canvas");
+  warmCanvas.width = 1;
+  warmCanvas.height = 1;
+  const warmContext = warmCanvas.getContext("2d");
+
+  async function prepareLayer(layer, index) {
+    if (layerReady[index] || !layer.naturalWidth) return;
 
     if (typeof layer.decode === "function") {
-      layer.decode().then(finish).catch(finish);
-    } else {
-      finish();
+      try {
+        await layer.decode();
+      } catch {
+        // A loaded image remains usable if explicit decoding is interrupted.
+      }
     }
+
+    let source = layer;
+    if ("createImageBitmap" in window) {
+      try {
+        source = await createImageBitmap(layer);
+      } catch {
+        source = layer;
+      }
+    }
+
+    layerSources[index] = source;
+    if (warmContext) {
+      warmContext.clearRect(0, 0, 1, 1);
+      warmContext.drawImage(source, 0, 0, 1, 1);
+    }
+    layerReady[index] = true;
+    lastRenderSignature = "";
+    requestMapFrame();
   }
 
   function sizeCanvas(width, height) {
     if (!mapCanvas || !mapContext) return;
-    const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     const outputWidth = Math.round(width * pixelRatio);
     const outputHeight = Math.round(height * pixelRatio);
 
@@ -156,6 +179,9 @@ if (mapZoom) {
 
     visibleLayers.forEach(({ index, opacity }, visibleLayerIndex) => {
       const layer = layers[index];
+      const source = layerSources[index] || layer;
+      const sourceNaturalWidth = source.width || layer.naturalWidth;
+      const sourceNaturalHeight = source.height || layer.naturalHeight;
       const scale = globalZoom / baseZooms[index];
       const drawSize = renderedSize * scale;
       const focusX = Number(layer.dataset.focusX);
@@ -171,14 +197,14 @@ if (mapZoom) {
 
       if (destinationWidth <= 0 || destinationHeight <= 0) return;
 
-      const sourceX = (destinationLeft - drawLeft) / drawSize * layer.naturalWidth;
-      const sourceY = (destinationTop - drawTop) / drawSize * layer.naturalHeight;
-      const sourceWidth = destinationWidth / drawSize * layer.naturalWidth;
-      const sourceHeight = destinationHeight / drawSize * layer.naturalHeight;
+      const sourceX = (destinationLeft - drawLeft) / drawSize * sourceNaturalWidth;
+      const sourceY = (destinationTop - drawTop) / drawSize * sourceNaturalHeight;
+      const sourceWidth = destinationWidth / drawSize * sourceNaturalWidth;
+      const sourceHeight = destinationHeight / drawSize * sourceNaturalHeight;
 
       mapContext.globalAlpha = visibleLayerIndex === 0 ? 1 : opacity;
       mapContext.drawImage(
-        layer,
+        source,
         sourceX,
         sourceY,
         sourceWidth,
@@ -196,9 +222,9 @@ if (mapZoom) {
 
   layers.forEach((layer, index) => {
     if (layer.complete && layer.naturalWidth) {
-      markLayerReady(layer, index);
+      prepareLayer(layer, index);
     } else {
-      layer.addEventListener("load", () => markLayerReady(layer, index), { once: true });
+      layer.addEventListener("load", () => prepareLayer(layer, index), { once: true });
     }
   });
 
@@ -215,7 +241,7 @@ if (mapZoom) {
       progress.toFixed(6),
       viewportWidth,
       viewportHeight,
-      Math.min(window.devicePixelRatio || 1, 1.5),
+      Math.min(window.devicePixelRatio || 1, 2),
       layerReady.map(Number).join(""),
     ].join(":");
 
@@ -245,16 +271,15 @@ if (mapZoom) {
       if (logZoom >= baseLogZooms[index]) activeIndex = index;
     }
 
-    if (activeIndex === 0) {
-      idealOpacities[0] = 1;
+    const nextIndex = activeIndex + 1;
+    if (nextIndex < layers.length) {
+      const transitionEnd = baseLogZooms[nextIndex];
+      const transitionStart = transitionEnd - transitionWidth;
+      const blend = smoothstep(transitionStart, transitionEnd, logZoom);
+      idealOpacities[activeIndex] = 1 - blend;
+      idealOpacities[nextIndex] = blend;
     } else {
-      const blend = smoothstep(
-        baseLogZooms[activeIndex],
-        baseLogZooms[activeIndex] + transitionWidth,
-        logZoom,
-      );
-      idealOpacities[activeIndex - 1] = 1 - blend;
-      idealOpacities[activeIndex] = blend;
+      idealOpacities[activeIndex] = 1;
     }
 
     const readyOpacity = idealOpacities.reduce(
@@ -291,6 +316,11 @@ if (mapZoom) {
     if (visibleIndex !== renderedStageIndex) {
       labels.forEach((label, index) => {
         label.classList.toggle("is-active", index === visibleIndex);
+        const button = label.querySelector("[data-map-jump]");
+        if (button) {
+          if (index === visibleIndex) button.setAttribute("aria-current", "step");
+          else button.removeAttribute("aria-current");
+        }
       });
       if (stageName) stageName.textContent = stages[visibleIndex].name;
       if (stageResolution) stageResolution.textContent = stages[visibleIndex].resolution;
@@ -315,5 +345,20 @@ if (mapZoom) {
 
   window.addEventListener("scroll", requestMapFrame, { passive: true });
   window.addEventListener("resize", requestMapFrame);
+
+  jumpButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const level = Number(button.dataset.mapLevel);
+      if (!Number.isInteger(level) || level < 0 || level >= baseLogZooms.length) return;
+
+      const sectionTop = window.scrollY + mapZoom.getBoundingClientRect().top;
+      const scrollDistance = Math.max(mapZoom.offsetHeight - window.innerHeight, 1);
+      const levelProgress = baseLogZooms[level] / maxLogZoom;
+      const targetTop = sectionTop + levelProgress * scrollDistance;
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollTo({ top: targetTop, behavior: reducedMotion ? "auto" : "smooth" });
+    });
+  });
+
   renderMapZoom();
 }

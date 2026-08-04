@@ -263,14 +263,30 @@
 
             <div class="geo-bottom">
               <ol class="geo-levels" aria-label="Hierarchy levels">
-                <li class="is-active" data-map-label><strong>L0</strong><span>City</span></li>
-                <li data-map-label><strong>L1</strong><span>Region</span></li>
-                <li data-map-label><strong>L2</strong><span>District</span></li>
-                <li data-map-label><strong>L3</strong><span>Local</span></li>
+                <li class="is-active" data-map-label>
+                  <button type="button" data-map-jump data-map-level="0" aria-current="step">
+                    <strong>City-scale</strong><span>City</span>
+                  </button>
+                </li>
+                <li data-map-label>
+                  <button type="button" data-map-jump data-map-level="1">
+                    <strong>L1</strong><span>Region</span>
+                  </button>
+                </li>
+                <li data-map-label>
+                  <button type="button" data-map-jump data-map-level="2">
+                    <strong>L2</strong><span>District</span>
+                  </button>
+                </li>
+                <li data-map-label>
+                  <button type="button" data-map-jump data-map-level="3">
+                    <strong>L3</strong><span>Local</span>
+                  </button>
+                </li>
               </ol>
 
               <div class="geo-stage-readout" aria-live="polite">
-                <span data-map-stage>City gallery</span>
+                <span data-map-stage>City-scale gallery</span>
                 <strong data-map-resolution>49,152 px source</strong>
               </div>
             </div>
