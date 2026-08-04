@@ -62,3 +62,69 @@ if (copyButton && bibtex) {
     }, 1800);
   });
 }
+
+const mapZoom = document.querySelector("[data-map-zoom]");
+
+if (mapZoom) {
+  const layers = [...mapZoom.querySelectorAll("[data-map-layer]")];
+  const labels = [...mapZoom.querySelectorAll("[data-map-label]")];
+  const progressBar = mapZoom.querySelector("[data-map-progress]");
+  const target = mapZoom.querySelector(".geo-target");
+  const horizontalAxis = mapZoom.querySelector(".geo-axis-x");
+  const verticalAxis = mapZoom.querySelector(".geo-axis-y");
+  const stageName = mapZoom.querySelector("[data-map-stage]");
+  const stageResolution = mapZoom.querySelector("[data-map-resolution]");
+  const stages = [
+    { name: "City gallery", resolution: "49,152 px source" },
+    { name: "Regional candidate", resolution: "12,288 px window" },
+    { name: "District candidate", resolution: "4,096 px window" },
+    { name: "Local candidate", resolution: "2 x 2 L3 tiles" },
+  ];
+  let frameRequested = false;
+
+  function renderMapZoom() {
+    const bounds = mapZoom.getBoundingClientRect();
+    const scrollDistance = Math.max(1, mapZoom.offsetHeight - window.innerHeight);
+    const progress = Math.min(1, Math.max(0, -bounds.top / scrollDistance));
+    const phase = progress * (layers.length - 1);
+    const activeIndex = Math.round(phase);
+    const firstLevelProgress = Math.min(1, phase);
+    const compactViewport = window.innerWidth <= 780;
+    const targetX = compactViewport ? 50 : 18 + firstLevelProgress * 32;
+    const targetY = compactViewport ? 50 : 46 + firstLevelProgress * 4;
+
+    layers.forEach((layer, index) => {
+      const opacity = Math.max(0, 1 - Math.abs(index - phase));
+      const localProgress = Math.min(1, Math.max(0, phase - index));
+      const scale = 1 + localProgress * (index === 0 ? 0.22 : 0.08);
+      layer.style.opacity = String(opacity);
+      layer.style.transform = `scale(${scale})`;
+      layer.classList.toggle("is-active", opacity > 0.5);
+    });
+
+    labels.forEach((label, index) => {
+      label.classList.toggle("is-active", index === activeIndex);
+    });
+
+    if (progressBar) progressBar.style.transform = `scaleX(${progress})`;
+    if (target) {
+      target.style.left = `${targetX}%`;
+      target.style.top = `${targetY}%`;
+    }
+    if (horizontalAxis) horizontalAxis.style.top = `${targetY}%`;
+    if (verticalAxis) verticalAxis.style.left = `${targetX}%`;
+    if (stageName) stageName.textContent = stages[activeIndex].name;
+    if (stageResolution) stageResolution.textContent = stages[activeIndex].resolution;
+    frameRequested = false;
+  }
+
+  function requestMapFrame() {
+    if (frameRequested) return;
+    frameRequested = true;
+    window.requestAnimationFrame(renderMapZoom);
+  }
+
+  window.addEventListener("scroll", requestMapFrame, { passive: true });
+  window.addEventListener("resize", requestMapFrame);
+  renderMapZoom();
+}
