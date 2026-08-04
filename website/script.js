@@ -80,26 +80,70 @@ if (mapZoom) {
     { name: "District candidate", resolution: "4,096 px window" },
     { name: "Local candidate", resolution: "2 x 2 L3 tiles" },
   ];
+  const baseZooms = layers.map((layer) => Number(layer.dataset.baseZoom));
+  const baseLogZooms = baseZooms.map((zoom) => Math.log2(zoom));
+  const maxLogZoom = 6;
+  const transitionWidth = 0.3;
   let frameRequested = false;
+
+  function clamp(value, minimum = 0, maximum = 1) {
+    return Math.min(maximum, Math.max(minimum, value));
+  }
+
+  function smoothstep(start, end, value) {
+    const amount = clamp((value - start) / (end - start));
+    return amount * amount * (3 - 2 * amount);
+  }
 
   function renderMapZoom() {
     const bounds = mapZoom.getBoundingClientRect();
     const scrollDistance = Math.max(1, mapZoom.offsetHeight - window.innerHeight);
-    const progress = Math.min(1, Math.max(0, -bounds.top / scrollDistance));
-    const phase = progress * (layers.length - 1);
-    const activeIndex = Math.round(phase);
-    const firstLevelProgress = Math.min(1, phase);
+    const progress = clamp(-bounds.top / scrollDistance);
+    const logZoom = progress * maxLogZoom;
+    const globalZoom = 2 ** logZoom;
     const compactViewport = window.innerWidth <= 780;
-    const targetX = compactViewport ? 50 : 18 + firstLevelProgress * 32;
-    const targetY = compactViewport ? 50 : 46 + firstLevelProgress * 4;
+    const mapViewport = mapZoom.querySelector(".geo-sticky");
+    const viewportWidth = mapViewport.clientWidth;
+    const viewportHeight = mapViewport.clientHeight;
+    const renderedSize = Math.max(viewportWidth, viewportHeight);
+    const renderedLeft = (viewportWidth - renderedSize) / 2;
+    const renderedTop = (viewportHeight - renderedSize) / 2;
+    const panProgress = smoothstep(0.03, 0.36, progress);
+    const initialTargetX = viewportWidth * (compactViewport ? 0.08 : 0.18);
+    const initialTargetY = viewportHeight * (compactViewport ? 0.5 : 0.46);
+    const targetX = initialTargetX + (viewportWidth / 2 - initialTargetX) * panProgress;
+    const targetY = initialTargetY + (viewportHeight / 2 - initialTargetY) * panProgress;
+    const opacities = new Array(layers.length).fill(0);
+    let activeIndex = 0;
+
+    for (let index = 1; index < baseLogZooms.length; index += 1) {
+      if (logZoom >= baseLogZooms[index]) activeIndex = index;
+    }
+
+    if (activeIndex === 0) {
+      opacities[0] = 1;
+    } else {
+      const blend = smoothstep(
+        baseLogZooms[activeIndex],
+        baseLogZooms[activeIndex] + transitionWidth,
+        logZoom,
+      );
+      opacities[activeIndex - 1] = 1 - blend;
+      opacities[activeIndex] = blend;
+      if (blend < 0.5) activeIndex -= 1;
+    }
 
     layers.forEach((layer, index) => {
-      const opacity = Math.max(0, 1 - Math.abs(index - phase));
-      const localProgress = Math.min(1, Math.max(0, phase - index));
-      const scale = 1 + localProgress * (index === 0 ? 0.22 : 0.08);
-      layer.style.opacity = String(opacity);
-      layer.style.transform = `scale(${scale})`;
-      layer.classList.toggle("is-active", opacity > 0.5);
+      const scale = globalZoom / baseZooms[index];
+      const focusX = Number(layer.dataset.focusX);
+      const focusY = Number(layer.dataset.focusY);
+      const sourceTargetX = renderedLeft + renderedSize * focusX;
+      const sourceTargetY = renderedTop + renderedSize * focusY;
+      const translateX = targetX - sourceTargetX * scale;
+      const translateY = targetY - sourceTargetY * scale;
+      layer.style.opacity = String(opacities[index]);
+      layer.style.transform = `matrix(${scale}, 0, 0, ${scale}, ${translateX}, ${translateY})`;
+      layer.classList.toggle("is-active", index === activeIndex);
     });
 
     labels.forEach((label, index) => {
@@ -108,11 +152,11 @@ if (mapZoom) {
 
     if (progressBar) progressBar.style.transform = `scaleX(${progress})`;
     if (target) {
-      target.style.left = `${targetX}%`;
-      target.style.top = `${targetY}%`;
+      target.style.left = `${targetX}px`;
+      target.style.top = `${targetY}px`;
     }
-    if (horizontalAxis) horizontalAxis.style.top = `${targetY}%`;
-    if (verticalAxis) verticalAxis.style.left = `${targetX}%`;
+    if (horizontalAxis) horizontalAxis.style.top = `${targetY}px`;
+    if (verticalAxis) verticalAxis.style.left = `${targetX}px`;
     if (stageName) stageName.textContent = stages[activeIndex].name;
     if (stageResolution) stageResolution.textContent = stages[activeIndex].resolution;
     frameRequested = false;
